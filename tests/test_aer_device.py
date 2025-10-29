@@ -54,19 +54,20 @@ def test_context_manager():
         assert result.shape == (4,)
         assert result[1] == result[2] == 0
     
+    raised = False
     try:
         device.stop()
     except RuntimeError:
-        assert True
-        return
+        raised = True
 
-    assert False, "Device should be stopped."
+    assert raised, "Device should be stopped."
 
 
 def test_instanciation():
 
-    device = AerDevice(
-            wires=2,
+    device = qml.device(
+        name="scaleway.aer",
+        wires=2,
         project_id=SCW_PROJECT_ID,
         secret_key=SCW_SECRET_KEY,
         url=SCW_API_URL,
@@ -82,13 +83,13 @@ def test_instanciation():
 
     device.stop()
 
+    raised = False
     try:
         device.stop()
     except RuntimeError:
-        assert True
-        return
+        raised = True
 
-    assert False, "Device should be stopped."
+    assert raised, "Device should be stopped."
 
 
 def test_minimal_method_call():

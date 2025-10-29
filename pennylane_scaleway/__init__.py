@@ -13,3 +13,4 @@
 # limitations under the License.
 
 from .aer_device import AerDevice
+from .utils import circuit_to_qiskit
