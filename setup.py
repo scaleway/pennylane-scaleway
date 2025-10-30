@@ -23,6 +23,10 @@ extra_requires = {
     "aer": ["qiskit-scaleway"],
 }
 
+devices_list = [
+    'scaleway.aer = pennylane_scaleway:AerDevice',
+]
+
 setup(
     name="pennylane-scaleway",
     version="0.0.1",
@@ -40,4 +44,5 @@ setup(
     description=description,
     long_description=long_description,
     long_description_content_type="text/markdown",
+    entry_points={'pennylane.plugins': devices_list},
 )

@@ -17,8 +17,9 @@ import pennylane as qml
 from pennylane.devices import Device
 from pennylane.tape import QuantumScript
 
+import pennylane_scaleway
 from pennylane_scaleway import AerDevice
-from qiskit_scaleway import ScalewayProvider
+
 
 SCW_PROJECT_ID = os.environ["SCW_PROJECT_ID"]
 SCW_SECRET_KEY = os.environ["SCW_SECRET_KEY"]
@@ -31,12 +32,12 @@ def _bell_state_circuit(device: Device) -> QuantumScript:
     def circuit():
         qml.Hadamard(wires=0)
         qml.CNOT(wires=[0, 1])
-        return qml.probs()
+        return qml.probs(wires=[0, 1])
     return circuit
 
 
 def test_context_manager():
-    
+
     with AerDevice(
             wires=2,
             project_id=SCW_PROJECT_ID,
@@ -46,14 +47,16 @@ def test_context_manager():
         ) as device:
 
         circuit = _bell_state_circuit(device)
-        
+
         result = circuit()
 
         print(result)
 
         assert result.shape == (4,)
         assert result[1] == result[2] == 0
-    
+        assert result[0] > 0
+        assert result[3] > 0
+
     raised = False
     try:
         device.stop()
@@ -80,6 +83,8 @@ def test_instanciation():
 
     assert result.shape == (4,)
     assert result[1] == result[2] == 0
+    assert result[0] > 0
+    assert result[3] > 0
 
     device.stop()
 
@@ -118,3 +123,8 @@ def test_minimal_method_call():
     print(final_results)
 
     assert False, "Test not implemented yet."
+
+
+if __name__ == "__main__":
+    test_minimal_method_call()
+    print("All tests passed!")
