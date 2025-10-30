@@ -12,46 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from logging import warning
-from typing import Optional
+from dataclasses import replace
+import warnings
 import numpy as np
 
 import pennylane as qml
 from pennylane.measurements import ExpectationMP, VarianceMP
 from pennylane.devices import Device, ExecutionConfig
-from pennylane.tape import QuantumScript, QuantumScriptOrBatch
+from pennylane.tape import QuantumScript, QuantumScriptOrBatch, QuantumTape
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
+from pennylane.transforms import split_non_commuting, broadcast_expand
+from pennylane.transforms.core import TransformProgram
+from pennylane.devices.preprocess import (
+    decompose,
+    validate_device_wires,
+    validate_measurements,
+    validate_observables,
+)
 
 from qiskit_scaleway import ScalewayProvider
-from qiskit_scaleway.primitives import Estimator
+from qiskit_scaleway.primitives import Estimator, Sampler
 from qiskit_scaleway.backends import AerBackend
 
-from utils import circuit_to_qiskit, mp_to_pauli
+try:
+    from .utils import circuit_to_qiskit, mp_to_pauli, QISKIT_OPERATION_MAP
+except ImportError:
+    from utils import circuit_to_qiskit, mp_to_pauli, QISKIT_OPERATION_MAP
 
 
-# def _apply_measurements(tape: QuantumScript, samples: np.ndarray, seed: Optional[int] = None) -> np.ndarray:
-#     if tape.shots:
-#         # Shot vector support
-#         results = []
-#         for lower, upper in tape.shots.bins():
-#             sub_samples = samples[lower:upper]
-#             results.append(
-#                 tuple(mp.process_samples(sub_samples, tape.wires) for mp in tape.measurements)
-#             )
-#         if len(tape.measurements) == 1:
-#             results = [res[0] for res in results]
-#         if not tape.shots.has_partitioned_shots:
-#             results = results[0]
-#         else:
-#             results = tuple(results)
-#     else:
-#         state = qml.math.sum(samples, axis=0) / tape.shots.total_shots
-#         results = tuple(mp.process_state(state, tape.wires) for mp in tape.measurements)
-#         if len(tape.measurements) == 1:
-#             results = results[0]
+@qml.transform
+def analytic_warning(tape: QuantumTape):
+    """Transform that adds a warning for circuits without shots set."""
+    if not tape.shots:
+        warnings.warn(
+            "Expected an integer number of shots, but received shots=None. A default "
+            "number of shots will be selected by the Qiskit backend. The analytic calculation of results is not supported on "
+            "this device. All statistics obtained from this device are estimates based "
+            "on samples.",
+            UserWarning,
+        )
+    return (tape,), lambda results: results[0]
 
-#     return results
+def accepted_sample_measurement(m: qml.measurements.MeasurementProcess) -> bool:
+    """Specifies whether or not a measurement is accepted when sampling."""
 
+    return isinstance(
+        m,
+        (
+            qml.measurements.SampleMeasurement,
+            qml.measurements.ClassicalShadowMP,
+            qml.measurements.ShadowExpvalMP,
+        ),
+    )
 
 @simulator_tracking     # update device.tracker with some relevant information
 @single_tape_support    # add support for device.execute(tape) in addition to device.execute((tape,))
@@ -62,6 +74,21 @@ class AerDevice(Device):
     """
 
     name = "scaleway.aer"
+
+    operations = set(QISKIT_OPERATION_MAP.keys())
+    observables = {
+        "PauliX",
+        "PauliY",
+        "PauliZ",
+        "Identity",
+        "Hadamard",
+        "Hermitian",
+        "Projector",
+        "Prod",
+        "Sum",
+        "LinearCombination",
+        "SProd",
+    }
 
     def __init__(
             self,
@@ -94,50 +121,66 @@ class AerDevice(Device):
             raise RuntimeError(f"Backend {instance} is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create.")
 
         if self.num_wires > self._backend.num_qubits:
-            warning.warn(
+            warnings.warn(
                 f"Number of wires ({self.num_wires}) exceeds the theoretical number of qubits in the backend ({self._backend.num_qubits})."
-                "This may lead to unexpected behavior."
+                "This may lead to unexpected behavior.",
+                UserWarning
             )
 
         self._session_id = self._backend.start_session(name="all-you-need-is-love", deduplication_id="all-you-need-is-love")
 
-    def preprocess_transforms(self, execution_config = None):
-        return super().preprocess_transforms(execution_config)
+    def preprocess(
+        self,
+        execution_config: ExecutionConfig | None = None,
+    ) -> tuple[TransformProgram, ExecutionConfig]:
+        """This function defines the device transform program to be applied and an updated device configuration.
 
-    def setup_execution_config(self, config = None, circuit = None):
-        return super().setup_execution_config(config, circuit)
+        Args:
+            execution_config (Union[ExecutionConfig, Sequence[ExecutionConfig]]): A data structure describing the
+                parameters needed to fully describe the execution.
 
+        Returns:
+            TransformProgram, ExecutionConfig: A transform program that when called returns QuantumTapes that the device
+            can natively execute as well as a postprocessing function to be called after execution, and a configuration with
+            unset specifications filled in.
 
-#####
-    # def execute(
-    #     self,
-    #     circuits: QuantumTape_or_Batch,
-    #     execution_config: ExecutionConfig | None = None,
-    # ) -> Result_or_ResultBatch:
-    #     """Execute a circuit or a batch of circuits and turn it into results."""
-    #     session = self._session
+        This device:
 
-    #     results = []
+        * Supports any operations with explicit PennyLane to Qiskit gate conversions defined in the plugin
+        * Does not intrinsically support parameter broadcasting
 
-    #     if isinstance(circuits, QuantumScript):
-    #         circuits = [circuits]
+        """
+        config = execution_config or ExecutionConfig()
 
-    #     for circ in circuits:
-    #         if circ.shots and len(circ.shots.shot_vector) > 1:
-    #             raise ValueError(
-    #                 f"Setting shot vector {circ.shots.shot_vector} is not supported for {self.name}."
-    #                 "Please use a single integer instead when specifying the number of shots."
-    #             )
-    #         if isinstance(circ.measurements[0], (ExpectationMP, VarianceMP)) and getattr(
-    #             circ.measurements[0].obs, "pauli_rep", None
-    #         ):
-    #             execute_fn = self._execute_estimator
-    #         else:
-    #             execute_fn = self._execute_sampler
-    #         results.append(execute_fn(circ, session))
-    #     return results
-#####
+        config = replace(config, use_device_gradient=False)
 
+        transform_program = TransformProgram()
+
+        transform_program.add_transform(analytic_warning)
+        transform_program.add_transform(validate_device_wires, self.wires, name=self.name)
+        transform_program.add_transform(
+            decompose,
+            stopping_condition=self.stopping_condition,
+            name=self.name,
+            skip_initial_state_prep=False,
+        )
+        transform_program.add_transform(
+            validate_measurements,
+            sample_measurements=accepted_sample_measurement,
+            name=self.name,
+        )
+        transform_program.add_transform(
+            validate_observables,
+            stopping_condition=self.observable_stopping_condition,
+            name=self.name,
+        )
+
+        transform_program.add_transform(broadcast_expand)
+        transform_program.add_transform(split_non_commuting)
+
+        # transform_program.add_transform(split_execution_types)
+
+        return transform_program, config
 
     def execute(
         self,
@@ -164,35 +207,6 @@ class AerDevice(Device):
                 results.append(self._execute_estimator(circuit))
             else:
                 results.append(self._execute_sampler(circuit))
-
-        # qiskit_circuits = list(map(
-        #     lambda circuit: qasm2.loads(qml.to_openqasm(circuit, measure_all=True)),
-        #     circuits
-        # ))
-
-        # qiskit_circuits = [circuit_to_qiskit(circuit, circuit.num_wires) for circuit in circuits]
-
-        # job = self._backend.run(qiskit_circuits, session_id=self._session_id)
-        # results = job.result().results
-
-        # results = [
-        #     np.expand_dims(
-        #         np.array(list(result.data.counts.values())),
-        #         axis=1
-        #     ) for result in results
-        # ]
-
-        # self._samples = self.generate_samples(0)
-        # res = [
-        #     mp.process_samples(self._samples, wire_order=self.wires) for mp in circuit.measurements
-        # ]
-
-        # results = tuple(map(
-        #     _apply_measurements,
-        #     circuits,
-        #     results,
-        #     [self._seed] * len(results)
-        # ))
 
         if len(results) == 1:
             results = results[0]
@@ -229,6 +243,49 @@ class AerDevice(Device):
         result = self._process_estimator_job(circuit.measurements, result)
 
         return result
+
+    def _execute_sampler(self, circuit: QuantumScript):
+        """Returns the result of the execution of the circuit using the SamplerV2 Primitive.
+        Note that this result has been processed respective to the MeasurementProcess given.
+        E.g. `qml.expval` returns an expectation value whereas `qml.sample()` will return the raw samples.
+
+        Args:
+            circuits (list[QuantumCircuit]): the circuits to be executed via SamplerV2
+            session (Session): the session that the execution will be performed with
+
+        Returns:
+            result (tuple): the processed result from SamplerV2
+        """
+        qcirc = circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
+        sampler = Sampler(self._backend, self._session_id)
+        # sampler.options.update(**self._kwargs)
+
+        result = sampler.run(
+            [qcirc],
+            shots=circuit.shots.total_shots if circuit.shots.total_shots else None,
+        ).result()[0]
+
+        # needs processing function to convert to the correct format for states, and
+        # also handle instances where wires were specified in probs, and for multiple probs measurements
+
+        c = getattr(result.data, qcirc.cregs[0].name)
+        counts = c.get_counts()
+        if not isinstance(counts, dict):
+            counts = c.get_counts()[0]
+
+        samples = []
+        for key, value in counts.items():
+            samples.extend([key] * value)
+        samples = np.vstack([np.array([int(i) for i in s[::-1]]) for s in samples])
+
+        res = [
+            mp.process_samples(samples, wire_order=self.wires) for mp in circuit.measurements
+        ]
+
+        single_measurement = len(circuit.measurements) == 1
+        res = (res[0],) if single_measurement else tuple(res)
+
+        return res
 
     @staticmethod
     def _process_estimator_job(measurements, job_result):
@@ -272,6 +329,14 @@ class AerDevice(Device):
         """
         return len(self.wires)
 
+    def stopping_condition(self, op: qml.operation.Operator) -> bool:
+        """Specifies whether or not an Operator is accepted by QiskitDevice2."""
+        return op.name in self.operations
+
+    def observable_stopping_condition(self, obs: qml.operation.Operator) -> bool:
+        """Specifies whether or not an observable is accepted by QiskitDevice2."""
+        return obs.name in self.observables
+
     def __enter__(self):
         return self
 
@@ -306,45 +371,48 @@ if __name__ == "__main__":
         ### Testing different output types for the same circuit
 
         # Expectation value
-        @qml.set_shots(1000)
+        @qml.set_shots(1024)
         @qml.qnode(device)
         def circuit() -> QuantumScript:
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
             return qml.expval(qml.PauliZ(0))
 
+        epsilon = 0.1
         expval = circuit()
-        assert np.isclose(expval, 0.0), f"Expected 0.0, got {expval}"
+        assert np.isclose(expval, 0.0, atol=epsilon), f"Expected ~0.0, got {expval}"
 
         # Probabilities
-        @qml.set_shots(10)
+        @qml.set_shots(1024)
         @qml.qnode(device)
         def circuit() -> QuantumScript:
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
-            return qml.probs(wires=0)
+            return qml.probs(wires=[0, 1])
 
         probs = circuit()
-        assert np.allclose([0.5, 0.5], probs), f"Expected [0.5, 0.5], got {probs}"
+        assert np.allclose([0.5, 0.0, 0.0,  0.5], probs, atol=epsilon), f"Expected ~[0.5, 0.0, 0.0, 0.5], got {probs}"
 
         # Counts
         @qml.set_shots(10)
         @qml.qnode(device)
         def circuit() -> QuantumScript:
             qml.Hadamard(wires=0)
-            qml.CNOT(wires=[0, 1])
+            qml.Hadamard(wires=0)
             return qml.counts(wires=0)
 
         counts = circuit()
-        assert counts() == {"0": 5}, f"Expected {'0': 5}, got {counts}"
+        assert counts == {"0": 10}, "Expected {'0': 10}, got " + str(counts)
 
         # Samples
         @qml.set_shots(10)
         @qml.qnode(device)
         def circuit() -> QuantumScript:
             qml.Hadamard(wires=0)
-            qml.CNOT(wires=[0, 1])
+            qml.Hadamard(wires=0)
             return qml.sample(wires=0)
 
         samples = circuit()
-        assert np.array_equal([0, 0, 0, 0, 0, 1, 1, 1, 1, 1], samples), f"Expected [0, 0, 0, 0, 0, 1, 1, 1, 1, 1], got {samples}"
+        assert np.array_equal([np.array([0])] * 10, samples), f"Expected [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], got {samples}"
+
+        print("Passed!")
