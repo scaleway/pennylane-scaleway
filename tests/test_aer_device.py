@@ -272,15 +272,19 @@ def test_variational_circuit(device_kwargs):
 
     with qml.device("scaleway.aer", wires=1, **device_kwargs) as dev:
 
+        @qml.set_shots(100)
         @qml.qnode(dev)
         def circuit(x):
             qml.RX(x, wires=0)
             return qml.probs(wires=0)
 
+        print(f"circuit(0)[1] = {circuit(0)[1]}")
+        print(f"circuit(pi)[1] = {circuit(np.pi)[1]}")
+
         # Objective: Find x to maximize P(|1>), which is circuit(x)[1]
         objective_fn = lambda x: -circuit(x)[1]
 
-        result = minimize(objective_fn, x0=np.array([0.0]), method="COBYLA")
+        result = minimize(objective_fn, x0=np.array([0.0]), method="COBYLA")    # THE ISSUE IS HERE! IT'S A DIMENSION UNSQUEEZE/SQUEEZING ISSUE.
 
         print(f"\nVariational test found parameter: {result.x[0]}")
         final_probs = circuit(result.x)
@@ -300,3 +304,13 @@ def test_variational_circuit(device_kwargs):
         final_prob_1 = final_probs[1]
         assert np.allclose(final_prob_1, 1.0, atol=0.2), \
             f"Expected P(|1>) ~ 1.0, got {final_prob_1}"
+
+
+if __name__ == "__main__":
+    test_variational_circuit({
+        "project_id": SCW_PROJECT_ID,
+        "secret_key": SCW_SECRET_KEY,
+        "url": SCW_API_URL,
+        "instance": SCW_INSTANCE_TYPE,
+    })
+    print("Done")
