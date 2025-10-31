@@ -35,9 +35,9 @@ from qiskit_scaleway.primitives import Estimator, Sampler
 from qiskit_scaleway.backends import AerBackend
 
 try:
-    from .utils import circuit_to_qiskit, mp_to_pauli, QISKIT_OPERATION_MAP
+    from .utils import circuit_to_qiskit, mp_to_pauli, QISKIT_OPERATION_MAP, split_execution_types, update_options
 except ImportError:
-    from utils import circuit_to_qiskit, mp_to_pauli, QISKIT_OPERATION_MAP
+    from utils import circuit_to_qiskit, mp_to_pauli, QISKIT_OPERATION_MAP, split_execution_types, update_options
 
 
 @qml.transform
@@ -105,29 +105,44 @@ class AerDevice(Device):
         self._seed = seed
         self._rng = np.random.default_rng(seed)
 
-        instance = kwargs.get("instance", "aer_simulation_pop_c16m128")
-        self._provider = ScalewayProvider(
-            project_id=kwargs.get("project_id"),
-            secret_key=kwargs.get("secret_key"),
-            url=kwargs.get("url"),
-        )
+        try:
+            self._handle_kwargs(**kwargs)
+        except Exception as e:
+            print(f"Error handling kwargs: {e}")
+            instance = kwargs.get("instance", "aer_simulation_pop_c16m128")
+            self._provider = ScalewayProvider(
+                project_id=kwargs.get("project_id"),
+                secret_key=kwargs.get("secret_key"),
+                url=kwargs.get("url"),
+            )
 
-        backends = [backend for backend in self._provider.backends() if isinstance(backend, AerBackend)]
-        if instance not in [backend.name for backend in backends]:
-            raise ValueError(f"Backend {instance} not found. Available backends are {[backend.name for backend in backends]}.")
+            backends = [backend for backend in self._provider.backends() if isinstance(backend, AerBackend)]
+            if instance not in [backend.name for backend in backends]:
+                raise ValueError(f"Backend {instance} not found. Available backends are {[backend.name for backend in backends]}.")
 
-        self._backend = self._provider.get_backend(instance)
-        if self._backend.availability != "available":
-            raise RuntimeError(f"Backend {instance} is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create.")
+            self._backend = self._provider.get_backend(instance)
+            if self._backend.availability != "available":
+                raise RuntimeError(f"Backend {instance} is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create.")
 
         if self.num_wires > self._backend.num_qubits:
             warnings.warn(
-                f"Number of wires ({self.num_wires}) exceeds the theoretical number of qubits in the backend ({self._backend.num_qubits})."
+                f"Number of wires ({self.num_wires}) exceeds the theoretical limit of qubits in the backend ({self._backend.num_qubits})."
                 "This may lead to unexpected behavior.",
                 UserWarning
             )
 
-        self._session_id = self._backend.start_session(name="all-you-need-is-love", deduplication_id="all-you-need-is-love")
+        try:
+            self._scaleway_session_setup(**kwargs)
+        except Exception as e:
+            print(f"Error setting up Scaleway session: {e}")
+            self._session_id = self._backend.start_session(name="all-you-need-is-love", deduplication_id="all-you-need-is-love")
+
+    def _handle_kwargs(self, **kwargs):
+        self._kwargs = kwargs
+        raise NotImplementedError("This method has to be implemented.")
+
+    def _scaleway_session_setup(self, **kwargs):
+        raise NotImplementedError("This method has to be implemented.")
 
     def preprocess(
         self,
@@ -148,7 +163,6 @@ class AerDevice(Device):
 
         * Supports any operations with explicit PennyLane to Qiskit gate conversions defined in the plugin
         * Does not intrinsically support parameter broadcasting
-
         """
         config = execution_config or ExecutionConfig()
 
@@ -177,8 +191,7 @@ class AerDevice(Device):
 
         transform_program.add_transform(broadcast_expand)
         transform_program.add_transform(split_non_commuting)
-
-        # transform_program.add_transform(split_execution_types)
+        transform_program.add_transform(split_execution_types)
 
         return transform_program, config
 
@@ -198,8 +211,6 @@ class AerDevice(Device):
                     f"Setting shot vector {circuit.shots.shot_vector} is not supported for {self.name}."
                     "Please use a single integer instead when specifying the number of shots."
                 )
-            # elif not circuit.shots:
-            #     circuit._shots = self.default_shots
 
             if isinstance(circuit.measurements[0], (ExpectationMP, VarianceMP)) and getattr(
                 circuit.measurements[0].obs, "pauli_rep", None
@@ -207,9 +218,6 @@ class AerDevice(Device):
                 results.append(self._execute_estimator(circuit))
             else:
                 results.append(self._execute_sampler(circuit))
-
-        if len(results) == 1:
-            results = results[0]
 
         return results
 
@@ -234,7 +242,9 @@ class AerDevice(Device):
         compiled_observables = [
             op.apply_layout(qcirc.layout) for op in pauli_observables
         ]
-        # estimator.options.update(**self._kwargs)
+
+        update_options(estimator, self._kwargs)
+
         circ_and_obs = [(qcirc, compiled_observables)]
         result = estimator.run(
             circ_and_obs,
@@ -258,7 +268,7 @@ class AerDevice(Device):
         """
         qcirc = circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
         sampler = Sampler(self._backend, self._session_id)
-        # sampler.options.update(**self._kwargs)
+        update_options(sampler, self._kwargs)
 
         result = sampler.run(
             [qcirc],
@@ -318,7 +328,11 @@ class AerDevice(Device):
         return result
 
     def stop(self):
-        self._backend.stop_session(self._session_id)
+        if self._session_id:
+            self._backend.stop_session(self._session_id)
+            self._session_id = None
+        else:
+            raise RuntimeError("No session running.")
 
     @property
     def num_wires(self):

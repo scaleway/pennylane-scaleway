@@ -12,15 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any, Callable, Sequence, Union
 import numpy as np
+import warnings
 
 import pennylane as qml
 from pennylane.tape.tape import rotations_and_diagonal_measurements
+from pennylane.transforms import transform
+from pennylane.measurements import ExpectationMP, VarianceMP
 
 from qiskit.circuit import QuantumCircuit, ClassicalRegister, QuantumRegister
 from qiskit.circuit import library as lib
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 from qiskit.quantum_info import SparsePauliOp
+from qiskit_scaleway.primitives import Sampler, Estimator
 
 
 QISKIT_OPERATION_MAP = {
@@ -79,10 +84,7 @@ def accepted_sample_measurement(m: qml.measurements.MeasurementProcess) -> bool:
         ),
     )
 
-# diagonalize is currently only used if measuring
-# maybe always diagonalize when measuring, and never when not?
-# will this be used for a user-facing function to convert from PL to Qiskit as well?
-def circuit_to_qiskit(circuit, register_size, diagonalize=True, measure=True):
+def circuit_to_qiskit(circuit: qml.tape.QuantumTape, register_size: int, diagonalize: bool = True, measure: bool = True) -> QuantumCircuit:
     """Builds the circuit objects based on the operations and measurements
     specified to apply.
 
@@ -139,7 +141,6 @@ def circuit_to_qiskit(circuit, register_size, diagonalize=True, measure=True):
 
     return qc
 
-
 def operation_to_qiskit(operation, reg, creg=None):
     """Take a Pennylane operator and convert to a Qiskit circuit
 
@@ -181,7 +182,6 @@ def operation_to_qiskit(operation, reg, creg=None):
 
     return circuit
 
-
 def mp_to_pauli(mp, register_size):
     """Convert a Pauli observable to a SparsePauliOp for measurement via Estimator
 
@@ -208,3 +208,77 @@ def mp_to_pauli(mp, register_size):
         raise ValueError(f"The operator {op} does not have a representation for SparsePauliOp")
 
     return SparsePauliOp(data=pauli_strings, coeffs=coeffs).simplify()
+
+@transform
+def split_execution_types(
+    tape: qml.tape.QuantumTape,
+) -> tuple[Sequence[qml.tape.QuantumTape], Callable]:
+    """Split into separate tapes based on measurement type. Counts and sample-based measurements
+    will use the Qiskit Sampler. ExpectationValue and Variance will use the Estimator, except
+    when the measured observable does not have a `pauli_rep`. In that case, the Sampler will be
+    used, and the raw samples will be processed to give an expectation value."""
+    estimator = []
+    sampler = []
+
+    for i, mp in enumerate(tape.measurements):
+        if isinstance(mp, (ExpectationMP, VarianceMP)):
+            if mp.obs.pauli_rep:
+                estimator.append((mp, i))
+            else:
+                warnings.warn(
+                    f"The observable measured {mp.obs} does not have a `pauli_rep` "
+                    "and will be run without using the Estimator primitive. Instead, "
+                    "raw samples from the Sampler will be used."
+                )
+                sampler.append((mp, i))
+        else:
+            sampler.append((mp, i))
+
+    order_indices = [[i for mp, i in group] for group in [estimator, sampler]]
+
+    tapes = []
+    if estimator:
+        tapes.extend(
+            [
+                qml.tape.QuantumScript(
+                    tape.operations,
+                    measurements=[mp for mp, i in estimator],
+                    shots=tape.shots,
+                )
+            ]
+        )
+    if sampler:
+        tapes.extend(
+            [
+                qml.tape.QuantumScript(
+                    tape.operations,
+                    measurements=[mp for mp, i in sampler],
+                    shots=tape.shots,
+                )
+            ]
+        )
+
+    def reorder_fn(res):
+        """re-order the output to the original shape and order"""
+
+        flattened_indices = [i for group in order_indices for i in group]
+        flattened_results = [r for group in res for r in group]
+
+        if len(flattened_indices) != len(flattened_results):
+            raise ValueError(
+                "The lengths of flattened_indices and flattened_results do not match."
+            )  # pragma: no cover
+
+        result = dict(zip(flattened_indices, flattened_results))
+
+        result = tuple(result[i] for i in sorted(result.keys()))
+
+        return result[0] if len(result) == 1 else result
+
+    return tapes, reorder_fn
+
+def update_options(primitive: Union[Estimator, Sampler], options: dict[str, Any]):
+    for key, value in primitive.options.__dict__.items():
+        if key in options:
+            primitive.options[key] = options[key]
+    return primitive
