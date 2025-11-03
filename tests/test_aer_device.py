@@ -21,7 +21,7 @@ import pennylane as qml
 SCW_PROJECT_ID = os.environ.get("SCW_PROJECT_ID")
 SCW_SECRET_KEY = os.environ.get("SCW_SECRET_KEY")
 SCW_API_URL = os.getenv("SCW_API_URL")
-SCW_INSTANCE_TYPE = os.getenv("SCW_BACKEND_NAME", "aer_simulation_local")
+SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "aer_simulation_local")
 
 # This marker will skip all tests in this file if credentials are not found.
 requires_scaleway = pytest.mark.skipif(
@@ -39,7 +39,7 @@ def device_kwargs():
         "project_id": SCW_PROJECT_ID,
         "secret_key": SCW_SECRET_KEY,
         "url": SCW_API_URL,
-        "instance": SCW_INSTANCE_TYPE,
+        "backend": SCW_BACKEND_NAME,
     }
 
 @pytest.fixture
@@ -61,11 +61,7 @@ def test_device_instantiation(device_kwargs):
         assert dev.name == "scaleway.aer"
         assert dev.num_wires == 2
         assert dev._session_id is not None
-        assert dev._backend.name == SCW_INSTANCE_TYPE
-
-        # Store session_id to check after exit
-        session_id = dev._session_id
-        backend = dev._backend
+        assert dev._platform.name == SCW_BACKEND_NAME
 
     # After 'with' block, session should be stopped
     assert dev._session_id is None
@@ -278,20 +274,15 @@ def test_variational_circuit(device_kwargs):
             qml.RX(x, wires=0)
             return qml.probs(wires=0)
 
-        print(f"circuit(0)[1] = {circuit(0)[1]}")
-        print(f"circuit(pi)[1] = {circuit(np.pi)[1]}")
-
         # Objective: Find x to maximize P(|1>), which is circuit(x)[1]
-        objective_fn = lambda x: -circuit(x)[1]
+        def objective_fn(x: np.ndarray) -> float:
+            probs = circuit(x)
+            probs = probs.squeeze()
+            return -probs[1]
 
-        result = minimize(objective_fn, x0=np.array([0.0]), method="COBYLA")    # THE ISSUE IS HERE! IT'S A DIMENSION UNSQUEEZE/SQUEEZING ISSUE.
+        result = minimize(objective_fn, x0=np.array([0.0]), method="COBYLA")
+        final_probs = circuit(result.x).squeeze()
 
-        print(f"\nVariational test found parameter: {result.x[0]}")
-        final_probs = circuit(result.x)
-        print(f"Final probabilities [P(0), P(1)]: {final_probs}")
-
-        # The optimizer should find x ~= pi (or -pi, 3pi, etc.)
-        # P(|1>) = sin^2(x/2). This is maximized at 1.0 when x = pi.
         assert result.success
 
         # Check if the parameter is close to pi (modulo 2*pi)
@@ -304,13 +295,3 @@ def test_variational_circuit(device_kwargs):
         final_prob_1 = final_probs[1]
         assert np.allclose(final_prob_1, 1.0, atol=0.2), \
             f"Expected P(|1>) ~ 1.0, got {final_prob_1}"
-
-
-if __name__ == "__main__":
-    test_variational_circuit({
-        "project_id": SCW_PROJECT_ID,
-        "secret_key": SCW_SECRET_KEY,
-        "url": SCW_API_URL,
-        "instance": SCW_INSTANCE_TYPE,
-    })
-    print("Done")

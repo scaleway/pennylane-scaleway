@@ -1,10 +1,10 @@
-# Copyright 2025 Scaleway
+# Copyright 2021-2024 Xanadu Quantum Technologies Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -113,7 +113,7 @@ def circuit_to_qiskit(circuit: qml.tape.QuantumTape, register_size: int, diagona
         qc = QuantumCircuit(reg, name="temp")
 
         for op in circuit.operations:
-            qc &= operation_to_qiskit(op, reg)
+            qc &= _operation_to_qiskit(op, reg)
 
         return qc
 
@@ -121,7 +121,7 @@ def circuit_to_qiskit(circuit: qml.tape.QuantumTape, register_size: int, diagona
     qc = QuantumCircuit(reg, creg, name="temp")
 
     for op in circuit.operations:
-        qc &= operation_to_qiskit(op, reg, creg)
+        qc &= _operation_to_qiskit(op, reg, creg)
 
     # rotate the state for measurement in the computational basis
     # ToDo: check this in cases with multiple different bases
@@ -132,7 +132,7 @@ def circuit_to_qiskit(circuit: qml.tape.QuantumTape, register_size: int, diagona
                 rotations.extend(m.obs.diagonalizing_gates())
 
         for rot in rotations:
-            qc &= operation_to_qiskit(rot, reg, creg)
+            qc &= _operation_to_qiskit(rot, reg, creg)
 
     # barrier ensures we first do all operations, then do all measurements
     qc.barrier(reg)
@@ -141,7 +141,7 @@ def circuit_to_qiskit(circuit: qml.tape.QuantumTape, register_size: int, diagona
 
     return qc
 
-def operation_to_qiskit(operation, reg, creg=None):
+def _operation_to_qiskit(operation, reg, creg=None):
     """Take a Pennylane operator and convert to a Qiskit circuit
 
     Args:
