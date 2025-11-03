@@ -18,18 +18,10 @@ import numpy as np
 import pennylane as qml
 
 # Credentials
-SCW_PROJECT_ID = os.environ.get("SCW_PROJECT_ID")
-SCW_SECRET_KEY = os.environ.get("SCW_SECRET_KEY")
+SCW_PROJECT_ID = os.environ["SCW_PROJECT_ID"]
+SCW_SECRET_KEY = os.environ["SCW_SECRET_KEY"]
+SCW_BACKEND_NAME = os.environ["SCW_BACKEND_NAME"]
 SCW_API_URL = os.getenv("SCW_API_URL")
-SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "aer_simulation_local")
-
-# This marker will skip all tests in this file if credentials are not found.
-requires_scaleway = pytest.mark.skipif(
-    not (SCW_PROJECT_ID and SCW_SECRET_KEY),
-    reason="Scaleway credentials (SCW_PROJECT_ID, SCW_SECRET_KEY) not set in environment."
-)
-
-pytestmark = requires_scaleway
 
 
 @pytest.fixture(scope="module")
@@ -192,7 +184,7 @@ def test_shot_vector_error(device_kwargs):
             qml.Hadamard(wires=0)
             return qml.expval(qml.PauliZ(0))
 
-        with pytest.raises(ValueError, match="Setting shot vector"):
+        with pytest.raises(ValueError, match="Invalid shots value"):
             circuit()
 
 def test_mixed_measurement_bell_state(device_2wires_shots):

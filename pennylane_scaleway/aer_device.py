@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import replace
+from dataclasses import replace, fields
 import numpy as np
 from typing import List, Tuple
 import warnings
@@ -27,11 +27,14 @@ from pennylane.devices.preprocess import (
     validate_observables,
 )
 from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
+from pennylane.measurements.shots import Shots
 from pennylane.tape import QuantumScript, QuantumScriptOrBatch, QuantumTape
 from pennylane.transforms import split_non_commuting, broadcast_expand
 from pennylane.transforms.core import TransformProgram
 
 from qiskit.primitives.containers import PrimitiveResult, PubResult
+from qiskit.primitives.backend_estimator_v2 import Options as EstimatorOptions
+from qiskit.primitives.backend_sampler_v2 import Options as SamplerOptions
 
 from qiskit_scaleway import ScalewayProvider
 from qiskit_scaleway.backends import AerBackend
@@ -44,7 +47,6 @@ try:
         circuit_to_qiskit,
         mp_to_pauli,
         split_execution_types,
-        update_options,
     )
 except ImportError:
     from utils import (
@@ -53,7 +55,6 @@ except ImportError:
         circuit_to_qiskit,
         mp_to_pauli,
         split_execution_types,
-        update_options,
     )
 
 
@@ -104,47 +105,54 @@ class AerDevice(Device):
 
         super().__init__(wires=wires, shots=shots)
 
+        if isinstance(seed, int):
+            kwargs.update({"seed_simulator": seed})
         self._rng = np.random.default_rng(seed)
 
-        try:
-            self._handle_kwargs(**kwargs)
-        except Exception as e:
-            print(f"Error handling kwargs: {e}")
-
-            backend = kwargs.get("backend")
-            self._provider = ScalewayProvider(
-                project_id=kwargs.get("project_id"),
-                secret_key=kwargs.get("secret_key"),
-                url=kwargs.get("url"),
-            )
-
-            platforms = [platform for platform in self._provider.backends() if isinstance(platform, AerBackend)]
-            if backend not in [platform.name for platform in platforms]:
-                raise ValueError(f"Platform \'{backend}\' not found. Available platforms are {[platform.name for platform in platforms]}.")
-
-            self._platform = self._provider.get_backend(backend)
-            if self._platform.availability != "available":
-                raise RuntimeError(f"Platform {backend} is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create.")
+        self._handle_kwargs(**kwargs)
 
         if self.num_wires > self._platform.num_qubits:
             warnings.warn(
                 f"Number of wires ({self.num_wires}) exceeds the theoretical limit of qubits in the platform ({self._platform.num_qubits})."
-                "This may lead to unexpected behavior.",
+                "This may lead to unexpected behavior and crash.",
                 UserWarning
             )
 
-        try:
-            self._scaleway_session_setup(**kwargs)
-        except Exception as e:
-            print(f"Error setting up Scaleway session: {e}")
-            self._session_id = self._platform.start_session(name="all-you-need-is-love", deduplication_id="all-you-need-is-love")
+        self._session_id = None
 
     def _handle_kwargs(self, **kwargs):
-        self._kwargs = kwargs
-        raise NotImplementedError("This method has to be implemented.")
 
-    def _scaleway_session_setup(self, **kwargs):
-        raise NotImplementedError("This method has to be implemented.")
+        ### Setup Scaleway API and backend
+        backend = kwargs.pop("backend", None)
+
+        self._provider = ScalewayProvider(
+            project_id=kwargs.pop("project_id", None),
+            secret_key=kwargs.pop("secret_key", None),
+            url=kwargs.pop("url", None),
+        )
+
+        platforms = [platform for platform in self._provider.backends() if isinstance(platform, AerBackend)]
+        if backend not in [platform.name for platform in platforms]:
+            raise ValueError(f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms]}.")
+
+        self._platform = self._provider.get_backend(backend)
+        if self._platform.availability != "available":
+            raise RuntimeError(f"Platform '{backend}' is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create.")
+
+        ### Extract Estimator/Sampler-specific options
+        self._sampler_options = {k: v for k, v in kwargs.items() if k in (field.name for field in fields(SamplerOptions))}
+        self._estimator_options = {k: v for k, v in kwargs.items() if k in (field.name for field in fields(EstimatorOptions))}
+        [kwargs.pop(k) for k in (self._sampler_options.keys() | self._estimator_options.keys())]
+
+        ### Extract Scaleway's session-specific arguments
+        self._session_options = {
+            "name": kwargs.pop("session_name", None),
+            "deduplication_id": kwargs.pop("deduplication_id", None),
+            "max_duration": kwargs.pop("max_duration", None),
+            "max_idle_duration": kwargs.pop("max_idle_duration", None),
+        }
+
+        self._kwargs = kwargs
 
     def preprocess(
         self,
@@ -200,6 +208,10 @@ class AerDevice(Device):
         circuits: QuantumScriptOrBatch,
         execution_config: ExecutionConfig | None = None
     ):
+
+        if not self._session_id:
+            self.start()
+
         if isinstance(circuits, QuantumScript):
             circuits = [circuits]
 
@@ -225,20 +237,18 @@ class AerDevice(Device):
 
         qcirc = circuit_to_qiskit(circuit, self.num_wires, diagonalize=False, measure=False)
 
-        estimator = Estimator(backend=self._platform, session_id=self._session_id)
+        estimator = Estimator(backend=self._platform, session_id=self._session_id, options=self._estimator_options)
 
         pauli_observables = [mp_to_pauli(mp, self.num_wires) for mp in circuit.measurements]
         compiled_observables = [
             op.apply_layout(qcirc.layout) for op in pauli_observables
         ]
 
-        update_options(estimator, self._kwargs)
-
         circ_and_obs = [(qcirc, compiled_observables)]
 
         result = estimator.run(
             circ_and_obs,
-            precision=np.sqrt(1 / circuit.shots.total_shots) if circuit.shots else None,
+            precision=np.sqrt(1 / circuit.shots.total_shots) if circuit.shots.total_shots else None
         ).result()
         result = self._process_estimator_job(circuit.measurements, result)
 
@@ -248,13 +258,11 @@ class AerDevice(Device):
 
         qcirc = circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
 
-        sampler = Sampler(self._platform, self._session_id)
-
-        update_options(sampler, self._kwargs)
+        sampler = Sampler(self._platform, self._session_id, self._sampler_options)
 
         result = sampler.run(
             [qcirc],
-            shots=circuit.shots.total_shots if circuit.shots.total_shots else None,
+            shots=circuit.shots.total_shots if circuit.shots.total_shots else None
         ).result()[0]
 
         c = getattr(result.data, qcirc.cregs[0].name)
@@ -294,7 +302,18 @@ class AerDevice(Device):
 
         return result
 
+    def start(self) -> str:
+        """
+        Starts a session on the specified Scaleway platform. If a session is already running, it returns the existing session ID.
+        """
+        if not self._session_id:
+            self._session_id = self._platform.start_session(**self._session_options)
+        return self._session_id
+
     def stop(self):
+        """
+        Stops the currently running session on the Scaleway platform. Raises an error if no session is running.
+        """
         if self._session_id:
             self._platform.stop_session(self._session_id)
             self._session_id = None
@@ -305,6 +324,10 @@ class AerDevice(Device):
     def num_wires(self):
         return len(self.wires)
 
+    @property
+    def session_id(self):
+        return self._session_id
+
     def stopping_condition(self, op: qml.operation.Operator) -> bool:
         """Specifies whether or not an Operator is accepted by QiskitDevice2."""
         return op.name in self.operations
@@ -314,6 +337,7 @@ class AerDevice(Device):
         return obs.name in self.observables
 
     def __enter__(self):
+        self.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -330,6 +354,10 @@ if __name__ == "__main__":
         secret_key=os.environ["SCW_SECRET_KEY"],
         url=os.getenv("SCW_API_URL"),
         backend=os.getenv("SCW_BACKEND_NAME", "aer_simulation_local"),
+        shots=100,
+        seed=42,
+        abelian_grouping=False,
+        max_duration="42m",
     ) as device:
 
         ### Simple bell state circuit execution
@@ -344,6 +372,17 @@ if __name__ == "__main__":
         print(result)
 
         ### Testing different output types for the same circuit
+
+        # Counts
+        @qml.set_shots(10)
+        @qml.qnode(device)
+        def circuit() -> QuantumScript:
+            qml.Hadamard(wires=0)
+            qml.Hadamard(wires=0)
+            return qml.counts(wires=0)
+
+        counts = circuit()
+        assert counts == {"0": 10}, "Expected {'0': 10}, got " + str(counts)
 
         # Expectation value
         @qml.set_shots(1024)
@@ -367,17 +406,6 @@ if __name__ == "__main__":
 
         probs = circuit()
         assert np.allclose([0.5, 0.0, 0.0,  0.5], probs, atol=epsilon), f"Expected ~[0.5, 0.0, 0.0, 0.5], got {probs}"
-
-        # Counts
-        @qml.set_shots(10)
-        @qml.qnode(device)
-        def circuit() -> QuantumScript:
-            qml.Hadamard(wires=0)
-            qml.Hadamard(wires=0)
-            return qml.counts(wires=0)
-
-        counts = circuit()
-        assert counts == {"0": 10}, "Expected {'0': 10}, got " + str(counts)
 
         # Samples
         @qml.set_shots(10)
