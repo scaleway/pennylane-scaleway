@@ -3,7 +3,7 @@
 `pennylane-scaleway` is Apache 2.0 licensed and accepts contributions via GitHub.
 This document will cover how to contribute to the project and report issues.
 
-<p align="center"><img width="20%" src="docs/static_files/qaas-logo.png" /></p>
+<p align="center"><img width="20%" src="https://ultraviolet.scaleway.com/api/asset/download.png?asset_id=192741059&auth=WEDqkeoQRnxCS2fSfLVEjg"/></p>
 
 ## Topics
 
