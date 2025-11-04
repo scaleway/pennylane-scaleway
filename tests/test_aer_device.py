@@ -34,11 +34,13 @@ def device_kwargs():
         "backend": SCW_BACKEND_NAME,
     }
 
+
 @pytest.fixture
 def device_2wires(device_kwargs):
     """Fixture for a 2-wire device, auto-stopped after test."""
     with qml.device("scaleway.aer", wires=2, **device_kwargs) as dev:
         yield dev
+
 
 @pytest.fixture
 def device_2wires_shots(device_kwargs):
@@ -62,6 +64,7 @@ def test_device_instantiation(device_kwargs):
     with pytest.raises(RuntimeError, match="No session running"):
         dev.stop()
 
+
 def test_bell_state_probs(device_2wires_shots):
     """Tests probs() for a Bell state."""
 
@@ -76,11 +79,12 @@ def test_bell_state_probs(device_2wires_shots):
     # Result should be |00> and |11>
     assert isinstance(probs, np.ndarray)
     assert probs.shape == (4,)
-    assert np.isclose(probs[0], 0.5, atol=0.05) # Allow 5% tolerance for shots
+    assert np.isclose(probs[0], 0.5, atol=0.05)  # Allow 5% tolerance for shots
     assert np.isclose(probs[1], 0.0, atol=0.05)
     assert np.isclose(probs[2], 0.0, atol=0.05)
     assert np.isclose(probs[3], 0.5, atol=0.05)
     assert np.isclose(np.sum(probs), 1.0)
+
 
 def test_bell_state_expval_analytic(device_2wires):
     """Tests expval() with shots=None (analytic)."""
@@ -97,6 +101,7 @@ def test_bell_state_expval_analytic(device_2wires):
 
     assert np.isclose(expval, 0.0, atol=0.1)
 
+
 def test_bell_state_expval_shots(device_2wires_shots):
     """Tests expval() with shots (Estimator)."""
 
@@ -112,6 +117,7 @@ def test_bell_state_expval_shots(device_2wires_shots):
     # Aer simulator should return the exact value even with shots
     assert np.isclose(expval, 1.0, atol=1e-8)
 
+
 def test_hadamard_counts(device_kwargs):
     """Tests counts() measurement."""
 
@@ -121,13 +127,14 @@ def test_hadamard_counts(device_kwargs):
         @qml.qnode(dev)
         def circuit_counts():
             qml.Hadamard(wires=0)
-            qml.Hadamard(wires=0) # H.H = I, state is |0>
+            qml.Hadamard(wires=0)  # H.H = I, state is |0>
             return qml.counts(wires=0)
 
         counts = circuit_counts()
 
         assert isinstance(counts, dict)
         assert counts == {"0": 100}
+
 
 def test_hadamard_samples(device_kwargs):
     """Tests sample() measurement."""
@@ -137,7 +144,7 @@ def test_hadamard_samples(device_kwargs):
         @qml.qnode(dev)
         def circuit_samples():
             qml.Hadamard(wires=0)
-            qml.Hadamard(wires=0) # State is |0>
+            qml.Hadamard(wires=0)  # State is |0>
             return qml.sample(wires=0)
 
         samples = circuit_samples()
@@ -146,12 +153,13 @@ def test_hadamard_samples(device_kwargs):
         assert samples.shape == (50, 1)
         assert np.all(samples == 0)
 
+
 def test_pauli_z_variance_analytic(device_2wires):
     """Tests var() with shots=None (analytic)."""
 
     @qml.qnode(device_2wires)
     def circuit_var():
-        qml.Hadamard(wires=0) # State is |+>
+        qml.Hadamard(wires=0)  # State is |+>
         # Var(Z) for |+> = <Z^2> - <Z>^2 = <I> - 0^2 = 1
         return qml.var(qml.PauliZ(0))
 
@@ -160,12 +168,13 @@ def test_pauli_z_variance_analytic(device_2wires):
     # Estimated variance should be close to 1
     assert np.isclose(var, 1.0, atol=0.01)
 
+
 def test_pauli_z_variance_shots(device_2wires_shots):
     """Tests var() with shots."""
 
     @qml.qnode(device_2wires_shots)
     def circuit_var():
-        qml.Hadamard(wires=0) # State is |+>
+        qml.Hadamard(wires=0)  # State is |+>
         # Var(Z) for |+> = <Z^2> - <Z>^2 = <I> - 0^2 = 1
         return qml.var(qml.PauliZ(0))
 
@@ -173,6 +182,7 @@ def test_pauli_z_variance_shots(device_2wires_shots):
 
     # Estimated variance should be close to 1
     assert np.isclose(var, 1.0, atol=0.1)
+
 
 def test_shot_vector_error(device_kwargs):
     """Tests that a shot vector raises a ValueError."""
@@ -186,6 +196,7 @@ def test_shot_vector_error(device_kwargs):
 
         with pytest.raises(ValueError, match="Invalid shots value"):
             circuit()
+
 
 def test_mixed_measurement_bell_state(device_2wires_shots):
     """
@@ -213,14 +224,16 @@ def test_mixed_measurement_bell_state(device_2wires_shots):
     epsilon = 0.1
 
     assert isinstance(result_expval, (float, np.float64, np.float32))
-    assert np.isclose(result_expval, expected_expval, atol=epsilon), \
-        f"Expected expval ~{expected_expval}, but got {result_expval}"
+    assert np.isclose(
+        result_expval, expected_expval, atol=epsilon
+    ), f"Expected expval ~{expected_expval}, but got {result_expval}"
 
     assert isinstance(result_probs, np.ndarray)
     assert result_probs.shape == (4,), "Probs array has incorrect shape"
     assert np.isclose(np.sum(result_probs), 1.0), "Probabilities must sum to 1.0"
-    assert np.allclose(result_probs, expected_probs, atol=epsilon), \
-        f"Expected probs ~{expected_probs}, but got {result_probs}"
+    assert np.allclose(
+        result_probs, expected_probs, atol=epsilon
+    ), f"Expected probs ~{expected_probs}, but got {result_probs}"
 
 
 def test_huge_circuit(device_kwargs):
@@ -253,6 +266,7 @@ def test_huge_circuit(device_kwargs):
         assert isinstance(result, (float, np.float64, np.float32))
         assert np.isfinite(result)
 
+
 def test_variational_circuit(device_kwargs):
     """Test a simple variational circuit to maximize P(|1>)."""
 
@@ -279,11 +293,13 @@ def test_variational_circuit(device_kwargs):
 
         # Check if the parameter is close to pi (modulo 2*pi)
         optimized_param = result.x[0]
-        assert np.isclose(np.abs(optimized_param) % (2 * np.pi), np.pi, atol=0.2), \
-            f"Expected optimized parameter near pi, got {optimized_param}"
+        assert np.isclose(
+            np.abs(optimized_param) % (2 * np.pi), np.pi, atol=0.2
+        ), f"Expected optimized parameter near pi, got {optimized_param}"
 
         # Check if the final probability is close to 1.0
         # We use a large tolerance (0.2) because of stochasticity
         final_prob_1 = final_probs[1]
-        assert np.allclose(final_prob_1, 1.0, atol=0.2), \
-            f"Expected P(|1>) ~ 1.0, got {final_prob_1}"
+        assert np.allclose(
+            final_prob_1, 1.0, atol=0.2
+        ), f"Expected P(|1>) ~ 1.0, got {final_prob_1}"

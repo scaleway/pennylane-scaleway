@@ -24,7 +24,7 @@ extra_requires = {
 }
 
 devices_list = [
-    'scaleway.aer = pennylane_scaleway:AerDevice',
+    "scaleway.aer = pennylane_scaleway:AerDevice",
 ]
 
 setup(
@@ -44,5 +44,5 @@ setup(
     description=description,
     long_description=long_description,
     long_description_content_type="text/markdown",
-    entry_points={'pennylane.plugins': devices_list},
+    entry_points={"pennylane.plugins": devices_list},
 )

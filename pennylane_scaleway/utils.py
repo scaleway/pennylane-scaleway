@@ -1,4 +1,6 @@
 # Copyright 2021-2024 Xanadu Quantum Technologies Inc.
+# Copyright 2025 Scaleway
+# Major portions of this file are duplicated from the original implementation by the Xanadu team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -84,7 +86,13 @@ def accepted_sample_measurement(m: qml.measurements.MeasurementProcess) -> bool:
         ),
     )
 
-def circuit_to_qiskit(circuit: qml.tape.QuantumTape, register_size: int, diagonalize: bool = True, measure: bool = True) -> QuantumCircuit:
+
+def circuit_to_qiskit(
+    circuit: qml.tape.QuantumTape,
+    register_size: int,
+    diagonalize: bool = True,
+    measure: bool = True,
+) -> QuantumCircuit:
     """Builds the circuit objects based on the operations and measurements
     specified to apply.
 
@@ -141,6 +149,7 @@ def circuit_to_qiskit(circuit: qml.tape.QuantumTape, register_size: int, diagona
 
     return qc
 
+
 def _operation_to_qiskit(operation, reg, creg=None):
     """Take a Pennylane operator and convert to a Qiskit circuit
 
@@ -182,6 +191,7 @@ def _operation_to_qiskit(operation, reg, creg=None):
 
     return circuit
 
+
 def mp_to_pauli(mp, register_size):
     """Convert a Pauli observable to a SparsePauliOp for measurement via Estimator
 
@@ -197,7 +207,10 @@ def mp_to_pauli(mp, register_size):
     if op.pauli_rep:
         pauli_strings = [
             "".join(
-                ["I" if i not in pauli_term.wires else pauli_term[i] for i in range(register_size)][
+                [
+                    "I" if i not in pauli_term.wires else pauli_term[i]
+                    for i in range(register_size)
+                ][
                     ::-1
                 ]  ## Qiskit follows opposite wire order convention
             )
@@ -205,9 +218,12 @@ def mp_to_pauli(mp, register_size):
         ]
         coeffs = list(op.pauli_rep.values())
     else:
-        raise ValueError(f"The operator {op} does not have a representation for SparsePauliOp")
+        raise ValueError(
+            f"The operator {op} does not have a representation for SparsePauliOp"
+        )
 
     return SparsePauliOp(data=pauli_strings, coeffs=coeffs).simplify()
+
 
 @transform
 def split_execution_types(
@@ -276,6 +292,7 @@ def split_execution_types(
         return result[0] if len(result) == 1 else result
 
     return tapes, reorder_fn
+
 
 def update_options(primitive: Union[Estimator, Sampler], options: dict[str, Any]):
     for key, value in primitive.options.__dict__.items():

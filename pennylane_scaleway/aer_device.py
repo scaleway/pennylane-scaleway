@@ -70,8 +70,9 @@ def analytic_warning(tape: QuantumTape):
         )
     return (tape,), lambda results: results[0]
 
-@simulator_tracking     # update device.tracker with some relevant information
-@single_tape_support    # add support for device.execute(tape) in addition to device.execute((tape,))
+
+@simulator_tracking  # update device.tracker with some relevant information
+@single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class AerDevice(Device):
     """
     The way to call it:
@@ -95,13 +96,7 @@ class AerDevice(Device):
         "SProd",
     }
 
-    def __init__(
-            self,
-            wires=None,
-            shots=None,
-            seed=None,
-            **kwargs
-        ):
+    def __init__(self, wires=None, shots=None, seed=None, **kwargs):
 
         super().__init__(wires=wires, shots=shots)
 
@@ -115,7 +110,7 @@ class AerDevice(Device):
             warnings.warn(
                 f"Number of wires ({self.num_wires}) exceeds the theoretical limit of qubits in the platform ({self._platform.num_qubits})."
                 "This may lead to unexpected behavior and crash.",
-                UserWarning
+                UserWarning,
             )
 
         self._session_id = None
@@ -131,18 +126,37 @@ class AerDevice(Device):
             url=kwargs.pop("url", None),
         )
 
-        platforms = [platform for platform in self._provider.backends() if isinstance(platform, AerBackend)]
+        platforms = [
+            platform
+            for platform in self._provider.backends()
+            if isinstance(platform, AerBackend)
+        ]
         if backend not in [platform.name for platform in platforms]:
-            raise ValueError(f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms]}.")
+            raise ValueError(
+                f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms]}."
+            )
 
         self._platform = self._provider.get_backend(backend)
         if self._platform.availability != "available":
-            raise RuntimeError(f"Platform '{backend}' is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create.")
+            raise RuntimeError(
+                f"Platform '{backend}' is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create."
+            )
 
         ### Extract Estimator/Sampler-specific options
-        self._sampler_options = {k: v for k, v in kwargs.items() if k in (field.name for field in fields(SamplerOptions))}
-        self._estimator_options = {k: v for k, v in kwargs.items() if k in (field.name for field in fields(EstimatorOptions))}
-        [kwargs.pop(k) for k in (self._sampler_options.keys() | self._estimator_options.keys())]
+        self._sampler_options = {
+            k: v
+            for k, v in kwargs.items()
+            if k in (field.name for field in fields(SamplerOptions))
+        }
+        self._estimator_options = {
+            k: v
+            for k, v in kwargs.items()
+            if k in (field.name for field in fields(EstimatorOptions))
+        }
+        [
+            kwargs.pop(k)
+            for k in (self._sampler_options.keys() | self._estimator_options.keys())
+        ]
 
         ### Extract Scaleway's session-specific arguments
         self._session_options = {
@@ -180,7 +194,9 @@ class AerDevice(Device):
         transform_program = TransformProgram()
 
         transform_program.add_transform(analytic_warning)
-        transform_program.add_transform(validate_device_wires, self.wires, name=self.name)
+        transform_program.add_transform(
+            validate_device_wires, self.wires, name=self.name
+        )
         transform_program.add_transform(
             decompose,
             stopping_condition=self.stopping_condition,
@@ -206,7 +222,7 @@ class AerDevice(Device):
     def execute(
         self,
         circuits: QuantumScriptOrBatch,
-        execution_config: ExecutionConfig | None = None
+        execution_config: ExecutionConfig | None = None,
     ):
 
         if not self._session_id:
@@ -224,9 +240,9 @@ class AerDevice(Device):
                     "Please use a single integer instead when specifying the number of shots."
                 )
 
-            if isinstance(circuit.measurements[0], (ExpectationMP, VarianceMP)) and getattr(
-                circuit.measurements[0].obs, "pauli_rep", None
-            ):
+            if isinstance(
+                circuit.measurements[0], (ExpectationMP, VarianceMP)
+            ) and getattr(circuit.measurements[0].obs, "pauli_rep", None):
                 results.append(self._run_estimator(circuit))
             else:
                 results.append(self._run_sampler(circuit))
@@ -235,11 +251,19 @@ class AerDevice(Device):
 
     def _run_estimator(self, circuit: QuantumScript) -> Tuple:
 
-        qcirc = circuit_to_qiskit(circuit, self.num_wires, diagonalize=False, measure=False)
+        qcirc = circuit_to_qiskit(
+            circuit, self.num_wires, diagonalize=False, measure=False
+        )
 
-        estimator = Estimator(backend=self._platform, session_id=self._session_id, options=self._estimator_options)
+        estimator = Estimator(
+            backend=self._platform,
+            session_id=self._session_id,
+            options=self._estimator_options,
+        )
 
-        pauli_observables = [mp_to_pauli(mp, self.num_wires) for mp in circuit.measurements]
+        pauli_observables = [
+            mp_to_pauli(mp, self.num_wires) for mp in circuit.measurements
+        ]
         compiled_observables = [
             op.apply_layout(qcirc.layout) for op in pauli_observables
         ]
@@ -248,7 +272,11 @@ class AerDevice(Device):
 
         result = estimator.run(
             circ_and_obs,
-            precision=np.sqrt(1 / circuit.shots.total_shots) if circuit.shots.total_shots else None
+            precision=(
+                np.sqrt(1 / circuit.shots.total_shots)
+                if circuit.shots.total_shots
+                else None
+            ),
         ).result()
         result = self._process_estimator_job(circuit.measurements, result)
 
@@ -256,13 +284,15 @@ class AerDevice(Device):
 
     def _run_sampler(self, circuit: QuantumScript) -> Tuple:
 
-        qcirc = circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
+        qcirc = circuit_to_qiskit(
+            circuit, self.num_wires, diagonalize=True, measure=True
+        )
 
         sampler = Sampler(self._platform, self._session_id, self._sampler_options)
 
         result = sampler.run(
             [qcirc],
-            shots=circuit.shots.total_shots if circuit.shots.total_shots else None
+            shots=circuit.shots.total_shots if circuit.shots.total_shots else None,
         ).result()[0]
 
         c = getattr(result.data, qcirc.cregs[0].name)
@@ -276,7 +306,8 @@ class AerDevice(Device):
         samples = np.vstack([np.array([int(i) for i in s[::-1]]) for s in samples])
 
         res = [
-            mp.process_samples(samples, wire_order=self.wires) for mp in circuit.measurements
+            mp.process_samples(samples, wire_order=self.wires)
+            for mp in circuit.measurements
         ]
 
         single_measurement = len(circuit.measurements) == 1
@@ -285,10 +316,14 @@ class AerDevice(Device):
         return res
 
     @staticmethod
-    def _process_estimator_job(measurements: List[MeasurementProcess], job_result: PrimitiveResult[PubResult]):
+    def _process_estimator_job(
+        measurements: List[MeasurementProcess], job_result: PrimitiveResult[PubResult]
+    ):
 
         expvals = job_result[0].data.evs
-        variances = (job_result[0].data.stds / job_result[0].metadata["target_precision"]) ** 2
+        variances = (
+            job_result[0].data.stds / job_result[0].metadata["target_precision"]
+        ) ** 2
 
         result = []
         for i, mp in enumerate(measurements):
@@ -405,7 +440,9 @@ if __name__ == "__main__":
             return qml.probs(wires=[0, 1])
 
         probs = circuit()
-        assert np.allclose([0.5, 0.0, 0.0,  0.5], probs, atol=epsilon), f"Expected ~[0.5, 0.0, 0.0, 0.5], got {probs}"
+        assert np.allclose(
+            [0.5, 0.0, 0.0, 0.5], probs, atol=epsilon
+        ), f"Expected ~[0.5, 0.0, 0.0, 0.5], got {probs}"
 
         # Samples
         @qml.set_shots(10)
@@ -416,6 +453,8 @@ if __name__ == "__main__":
             return qml.sample(wires=0)
 
         samples = circuit()
-        assert np.array_equal([np.array([0])] * 10, samples), f"Expected [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], got {samples}"
+        assert np.array_equal(
+            [np.array([0])] * 10, samples
+        ), f"Expected [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], got {samples}"
 
         print("Passed!")
