@@ -98,6 +98,11 @@ class AerDevice(Device):
 
     def __init__(self, wires=None, shots=None, seed=None, **kwargs):
 
+        if shots and not isinstance(shots, int):
+            raise ValueError(
+                "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
+            )
+
         super().__init__(wires=wires, shots=shots)
 
         if isinstance(seed, int):

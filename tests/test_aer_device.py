@@ -15,6 +15,8 @@
 import pytest
 import os
 import numpy as np
+
+from pennylane.exceptions import PennyLaneDeprecationWarning
 import pennylane as qml
 
 # Credentials
@@ -187,14 +189,30 @@ def test_pauli_z_variance_shots(device_2wires_shots):
 def test_shot_vector_error(device_kwargs):
     """Tests that a shot vector raises a ValueError."""
 
-    with qml.device("scaleway.aer", wires=1, shots=[10, 20], **device_kwargs) as dev:
+    with pytest.warns(
+        PennyLaneDeprecationWarning, match="Setting shots on device is deprecated"
+    ):
+        with qml.device("scaleway.aer", wires=1, shots=10, **device_kwargs) as dev:
 
-        @qml.qnode(dev)
-        def circuit():
-            qml.Hadamard(wires=0)
-            return qml.expval(qml.PauliZ(0))
+            @qml.qnode(dev)
+            def circuit():
+                qml.Hadamard(wires=0)
+                return qml.expval(qml.PauliZ(0))
 
-        with pytest.raises(ValueError, match="Invalid shots value"):
+            circuit()
+
+    with pytest.raises(
+        ValueError, match="Only integer number of shots is supported on this device"
+    ):
+        with qml.device(
+            "scaleway.aer", wires=1, shots=[10, 20], **device_kwargs
+        ) as dev:
+
+            @qml.qnode(dev)
+            def circuit():
+                qml.Hadamard(wires=0)
+                return qml.expval(qml.PauliZ(0))
+
             circuit()
 
 
