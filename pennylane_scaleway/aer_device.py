@@ -27,7 +27,6 @@ from pennylane.devices.preprocess import (
     validate_observables,
 )
 from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
-from pennylane.measurements.shots import Shots
 from pennylane.tape import QuantumScript, QuantumScriptOrBatch, QuantumTape
 from pennylane.transforms import split_non_commuting, broadcast_expand
 from pennylane.transforms.core import TransformProgram
@@ -272,9 +271,10 @@ class AerDevice(Device):
 
     def _run_estimator(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
 
-        qcircs = [circuit_to_qiskit(
-            circuit, self.num_wires, diagonalize=False, measure=False
-        ) for circuit in circuits]
+        qcircs = [
+            circuit_to_qiskit(circuit, self.num_wires, diagonalize=False, measure=False)
+            for circuit in circuits
+        ]
 
         estimator = Estimator(
             backend=self._platform,
@@ -292,31 +292,37 @@ class AerDevice(Device):
             ]
             circ_and_obs.append((qcirc, compiled_observables))
 
-        precision = np.sqrt(1 / circuits[0].shots.total_shots) if circuits[0].shots.total_shots else None
+        precision = (
+            np.sqrt(1 / circuits[0].shots.total_shots)
+            if circuits[0].shots.total_shots
+            else None
+        )
 
-        results = estimator.run(
-            circ_and_obs,
-            precision=precision
-        ).result()
+        results = estimator.run(circ_and_obs, precision=precision).result()
 
         processed_results = []
         for i, circuit in enumerate(circuits):
-            processed_result = self._process_estimator_job(circuit.measurements, results[i])
+            processed_result = self._process_estimator_job(
+                circuit.measurements, results[i]
+            )
             processed_results.append(processed_result)
 
         return processed_results
 
     def _run_sampler(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
 
-        qcircs = [circuit_to_qiskit(
-            circuit, self.num_wires, diagonalize=True, measure=True
-        )for circuit in circuits]
+        qcircs = [
+            circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
+            for circuit in circuits
+        ]
 
         sampler = Sampler(self._platform, self._session_id, self._sampler_options)
 
         results = sampler.run(
             qcircs,
-            shots=circuits[0].shots.total_shots if circuits[0].shots.total_shots else None,
+            shots=(
+                circuits[0].shots.total_shots if circuits[0].shots.total_shots else None
+            ),
         ).result()
 
         all_results = []
@@ -334,7 +340,7 @@ class AerDevice(Device):
             samples_list = []
             for key, value in counts.items():
                 samples_list.extend([key] * value)
-            
+
             if not samples_list:
                 # Handle case with no samples (e.g., 0 shots)
                 # Create an empty array with the correct number of columns
@@ -358,7 +364,6 @@ class AerDevice(Device):
             all_results.append(res_tuple)
 
         return all_results
-
 
     @staticmethod
     def _process_estimator_job(
@@ -436,7 +441,6 @@ if __name__ == "__main__":
         backend=os.getenv("SCW_BACKEND_NAME", "aer_simulation_local"),
         shots=100,
         seed=42,
-        abelian_grouping=False,
         max_duration="42m",
     ) as device:
 
