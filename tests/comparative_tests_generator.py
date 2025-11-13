@@ -197,8 +197,6 @@ def main():
     shots = 4096
     seed = None  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
 
-    print_ascii_art()
-
     default_device = qml.device("default.qubit", wires=n_wires)
     scw_device = qml.device(
         "scaleway.aer",
@@ -208,6 +206,12 @@ def main():
         backend=SCW_BACKEND_NAME,
         url=SCW_API_URL,
     )
+
+    print_ascii_art()
+
+    print(f"\nNumber of wires: {n_wires}")
+    print(f"Number of layers: {n_layers}")
+    print(f"Shots: {shots}")
 
     try:
         for i in range(100):

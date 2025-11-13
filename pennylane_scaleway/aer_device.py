@@ -18,8 +18,7 @@ from typing import Iterable, List, Tuple
 import warnings
 
 import pennylane as qml
-from pennylane.devices import Device, ExecutionConfig
-from pennylane.devices.modifiers import simulator_tracking, single_tape_support
+from pennylane.devices import ExecutionConfig
 from pennylane.devices.preprocess import (
     decompose,
     validate_device_wires,
@@ -35,12 +34,12 @@ from qiskit.primitives.containers import PrimitiveResult, PubResult
 from qiskit.primitives.backend_estimator_v2 import Options as EstimatorOptions
 from qiskit.primitives.backend_sampler_v2 import Options as SamplerOptions
 
-from qiskit_scaleway import ScalewayProvider
-from qiskit_scaleway.backends import AerBackend
 from qiskit_scaleway.primitives import Estimator, Sampler
 
+from pennylane_scaleway import ScalewayDevice
+
 try:
-    from .utils import (
+    from .aer_utils import (
         QISKIT_OPERATION_MAP,
         accepted_sample_measurement,
         circuit_to_qiskit,
@@ -48,7 +47,7 @@ try:
         split_execution_types,
     )
 except ImportError:
-    from utils import (
+    from pennylane_scaleway.aer_utils import (
         QISKIT_OPERATION_MAP,
         accepted_sample_measurement,
         circuit_to_qiskit,
@@ -70,13 +69,7 @@ def analytic_warning(tape: QuantumTape):
     return (tape,), lambda results: results[0]
 
 
-@simulator_tracking  # update device.tracker with some relevant information
-@single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
-class AerDevice(Device):
-    """
-    The way to call it:
-        device = qml.device("scaleway.aer", wires=XXX, project_id=XXX, secret_key=XXX)
-    """
+class AerDevice(ScalewayDevice):
 
     name = "scaleway.aer"
 
@@ -102,7 +95,7 @@ class AerDevice(Device):
                 "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
             )
 
-        super().__init__(wires=wires, shots=shots)
+        super().__init__(wires=wires, shots=shots, kwargs=kwargs)
 
         if isinstance(seed, int):
             kwargs.update({"seed_simulator": seed})
@@ -117,34 +110,7 @@ class AerDevice(Device):
                 UserWarning,
             )
 
-        self._session_id = None
-
     def _handle_kwargs(self, **kwargs):
-
-        ### Setup Scaleway API and backend
-        backend = kwargs.pop("backend", None)
-
-        self._provider = ScalewayProvider(
-            project_id=kwargs.pop("project_id", None),
-            secret_key=kwargs.pop("secret_key", None),
-            url=kwargs.pop("url", None),
-        )
-
-        platforms = [
-            platform
-            for platform in self._provider.backends()
-            if isinstance(platform, AerBackend)
-        ]
-        if backend not in [platform.name for platform in platforms]:
-            raise ValueError(
-                f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms]}."
-            )
-
-        self._platform = self._provider.get_backend(backend)
-        if self._platform.availability != "available":
-            raise RuntimeError(
-                f"Platform '{backend}' is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create."
-            )
 
         ### Extract Estimator/Sampler-specific options
         self._sampler_options = {
@@ -161,14 +127,6 @@ class AerDevice(Device):
             kwargs.pop(k)
             for k in (self._sampler_options.keys() | self._estimator_options.keys())
         ]
-
-        ### Extract Scaleway's session-specific arguments
-        self._session_options = {
-            "name": kwargs.pop("session_name", None),
-            "deduplication_id": kwargs.pop("deduplication_id", None),
-            "max_duration": kwargs.pop("max_duration", None),
-            "max_idle_duration": kwargs.pop("max_idle_duration", None),
-        }
 
         self._kwargs = kwargs
 
@@ -203,7 +161,7 @@ class AerDevice(Device):
         )
         transform_program.add_transform(
             decompose,
-            stopping_condition=self.stopping_condition,
+            stopping_condition=self._stopping_condition,
             name=self.name,
             skip_initial_state_prep=False,
         )
@@ -214,7 +172,7 @@ class AerDevice(Device):
         )
         transform_program.add_transform(
             validate_observables,
-            stopping_condition=self.observable_stopping_condition,
+            stopping_condition=self._observable_stopping_condition,
             name=self.name,
         )
         transform_program.add_transform(broadcast_expand)
@@ -227,7 +185,7 @@ class AerDevice(Device):
         self,
         circuits: QuantumScriptOrBatch,
         execution_config: ExecutionConfig | None = None,
-    ):
+    ) -> List:
 
         if not self._session_id:
             self.start()
@@ -387,46 +345,14 @@ class AerDevice(Device):
 
         return result
 
-    def start(self) -> str:
-        """
-        Starts a session on the specified Scaleway platform. If a session is already running, it returns the existing session ID.
-        """
-        if not self._session_id:
-            self._session_id = self._platform.start_session(**self._session_options)
-        return self._session_id
-
-    def stop(self):
-        """
-        Stops the currently running session on the Scaleway platform. Raises an error if no session is running.
-        """
-        if self._session_id:
-            self._platform.stop_session(self._session_id)
-            self._session_id = None
-        else:
-            raise RuntimeError("No session running.")
-
-    @property
-    def num_wires(self):
-        return len(self.wires)
-
-    @property
-    def session_id(self):
-        return self._session_id
-
-    def stopping_condition(self, op: qml.operation.Operator) -> bool:
+    def _stopping_condition(self, op: qml.operation.Operator) -> bool:
         """Specifies whether or not an Operator is accepted by QiskitDevice2."""
         return op.name in self.operations
 
-    def observable_stopping_condition(self, obs: qml.operation.Operator) -> bool:
+    def _observable_stopping_condition(self, obs: qml.operation.Operator) -> bool:
         """Specifies whether or not an observable is accepted by QiskitDevice2."""
         return obs.name in self.observables
 
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
 
 
 if __name__ == "__main__":
