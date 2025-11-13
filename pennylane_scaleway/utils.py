@@ -171,6 +171,10 @@ def _operation_to_qiskit(operation, reg, creg=None):
 
     operation = operation.name
 
+    # If the operation is  a barrier, add a 'num_qubits' argument
+    if operation == "Barrier":
+        par = [len(reg)]
+
     mapped_operation = QISKIT_OPERATION_MAP[operation]
 
     qregs = [reg[i] for i in op_wires.labels]

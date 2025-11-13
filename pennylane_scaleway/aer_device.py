@@ -14,7 +14,7 @@
 
 from dataclasses import replace, fields
 import numpy as np
-from typing import List, Tuple
+from typing import Iterable, List, Tuple
 import warnings
 
 import pennylane as qml
@@ -27,7 +27,6 @@ from pennylane.devices.preprocess import (
     validate_observables,
 )
 from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
-from pennylane.measurements.shots import Shots
 from pennylane.tape import QuantumScript, QuantumScriptOrBatch, QuantumTape
 from pennylane.transforms import split_non_commuting, broadcast_expand
 from pennylane.transforms.core import TransformProgram
@@ -236,9 +235,10 @@ class AerDevice(Device):
         if isinstance(circuits, QuantumScript):
             circuits = [circuits]
 
-        results = []
-
-        for circuit in circuits:
+        estimator_indices = []
+        estimator_circuits = []
+        sampler_circuits = []
+        for i, circuit in enumerate(circuits):
             if circuit.shots and len(circuit.shots.shot_vector) > 1:
                 raise ValueError(
                     f"Setting shot vector {circuit.shots.shot_vector} is not supported for {self.name}."
@@ -248,17 +248,33 @@ class AerDevice(Device):
             if isinstance(
                 circuit.measurements[0], (ExpectationMP, VarianceMP)
             ) and getattr(circuit.measurements[0].obs, "pauli_rep", None):
-                results.append(self._run_estimator(circuit))
+                estimator_indices.append(i)
+                estimator_circuits.append(circuit)
             else:
-                results.append(self._run_sampler(circuit))
+                sampler_circuits.append(circuit)
+
+        if sampler_circuits:
+            sampler_results = self._run_sampler(sampler_circuits)
+        if estimator_circuits:
+            estimator_results = self._run_estimator(estimator_circuits)
+        results = []
+        s, e = 0, 0
+        for i, circuit in enumerate(circuits):
+            if i in estimator_indices:
+                results.append(estimator_results[e])
+                e += 1
+            else:
+                results.append(sampler_results[s])
+                s += 1
 
         return results
 
-    def _run_estimator(self, circuit: QuantumScript) -> Tuple:
+    def _run_estimator(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
 
-        qcirc = circuit_to_qiskit(
-            circuit, self.num_wires, diagonalize=False, measure=False
-        )
+        qcircs = [
+            circuit_to_qiskit(circuit, self.num_wires, diagonalize=False, measure=False)
+            for circuit in circuits
+        ]
 
         estimator = Estimator(
             backend=self._platform,
@@ -266,68 +282,97 @@ class AerDevice(Device):
             options=self._estimator_options,
         )
 
-        pauli_observables = [
-            mp_to_pauli(mp, self.num_wires) for mp in circuit.measurements
-        ]
-        compiled_observables = [
-            op.apply_layout(qcirc.layout) for op in pauli_observables
-        ]
+        circ_and_obs = []
+        for qcirc, circuit in zip(qcircs, circuits):
+            pauli_observables = [
+                mp_to_pauli(mp, self.num_wires) for mp in circuit.measurements
+            ]
+            compiled_observables = [
+                op.apply_layout(qcirc.layout) for op in pauli_observables
+            ]
+            circ_and_obs.append((qcirc, compiled_observables))
 
-        circ_and_obs = [(qcirc, compiled_observables)]
-
-        result = estimator.run(
-            circ_and_obs,
-            precision=(
-                np.sqrt(1 / circuit.shots.total_shots)
-                if circuit.shots.total_shots
-                else None
-            ),
-        ).result()
-        result = self._process_estimator_job(circuit.measurements, result)
-
-        return result
-
-    def _run_sampler(self, circuit: QuantumScript) -> Tuple:
-
-        qcirc = circuit_to_qiskit(
-            circuit, self.num_wires, diagonalize=True, measure=True
+        precision = (
+            np.sqrt(1 / circuits[0].shots.total_shots)
+            if circuits[0].shots.total_shots
+            else None
         )
+
+        results = estimator.run(circ_and_obs, precision=precision).result()
+
+        processed_results = []
+        for i, circuit in enumerate(circuits):
+            processed_result = self._process_estimator_job(
+                circuit.measurements, results[i]
+            )
+            processed_results.append(processed_result)
+
+        return processed_results
+
+    def _run_sampler(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
+
+        qcircs = [
+            circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
+            for circuit in circuits
+        ]
 
         sampler = Sampler(self._platform, self._session_id, self._sampler_options)
 
-        result = sampler.run(
-            [qcirc],
-            shots=circuit.shots.total_shots if circuit.shots.total_shots else None,
-        ).result()[0]
+        results = sampler.run(
+            qcircs,
+            shots=(
+                circuits[0].shots.total_shots if circuits[0].shots.total_shots else None
+            ),
+        ).result()
 
-        c = getattr(result.data, qcirc.cregs[0].name)
-        counts = c.get_counts()
-        if not isinstance(counts, dict):
-            counts = c.get_counts()[0]
+        all_results = []
+        for original_circuit, qcirc, result in zip(circuits, qcircs, results):
 
-        samples = []
-        for key, value in counts.items():
-            samples.extend([key] * value)
-        samples = np.vstack([np.array([int(i) for i in s[::-1]]) for s in samples])
+            # Extract counts from the classical register
+            # Assumes one classical register per circuit, which circuit_to_qiskit sets up
+            c = getattr(result.data, qcirc.cregs[0].name)
+            counts = c.get_counts()
+            if not isinstance(counts, dict):
+                # Handle cases where get_counts() might return a list
+                counts = c.get_counts()[0]
 
-        res = [
-            mp.process_samples(samples, wire_order=self.wires)
-            for mp in circuit.measurements
-        ]
+            # Reconstruct the list of samples from the counts dictionary
+            samples_list = []
+            for key, value in counts.items():
+                samples_list.extend([key] * value)
 
-        single_measurement = len(circuit.measurements) == 1
-        res = (res[0],) if single_measurement else tuple(res)
+            if not samples_list:
+                # Handle case with no samples (e.g., 0 shots)
+                # Create an empty array with the correct number of columns
+                num_clbits = len(qcirc.clbits)
+                samples = np.empty((0, num_clbits), dtype=int)
+            else:
+                # Convert bitstrings to numpy array of ints, reversing for convention
+                samples = np.vstack(
+                    [np.array([int(i) for i in s[::-1]]) for s in samples_list]
+                )
 
-        return res
+            # Process the samples according to the measurements in the original circuit
+            res = [
+                mp.process_samples(samples, wire_order=self.wires)
+                for mp in original_circuit.measurements
+            ]
+
+            # Format the final result tuple for this circuit
+            single_measurement = len(original_circuit.measurements) == 1
+            res_tuple = (res[0],) if single_measurement else tuple(res)
+            all_results.append(res_tuple)
+
+        return all_results
 
     @staticmethod
     def _process_estimator_job(
         measurements: List[MeasurementProcess], job_result: PrimitiveResult[PubResult]
     ):
 
-        expvals = job_result[0].data.evs
+        expvals = job_result.data.evs
         variances = (
-            job_result[0].data.stds / job_result[0].metadata["target_precision"]
+            job_result.data.stds / job_result.metadata["target_precision"]
         ) ** 2
 
         result = []
@@ -396,7 +441,6 @@ if __name__ == "__main__":
         backend=os.getenv("SCW_BACKEND_NAME", "aer_simulation_local"),
         shots=100,
         seed=42,
-        abelian_grouping=False,
         max_duration="42m",
     ) as device:
 
