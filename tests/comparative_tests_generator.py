@@ -16,9 +16,10 @@ import os
 import random
 from inspect import signature
 import math
-from typing import Set
+from typing import Dict, Set, Tuple
 import numpy as np
 
+from pennylane.measurements import SampleMP, CountsMP
 import pennylane as qml
 
 # Credentials
@@ -80,6 +81,7 @@ def randint_except(n: int, exclude: Set[int]):
     choice = set(range(n)) - exclude
     return random.choice(list(choice))
 
+
 def random_circuit_generator(device, n_wires, n_layers, shots=1024, seed=None):
 
     random.seed(seed)
@@ -95,88 +97,210 @@ def random_circuit_generator(device, n_wires, n_layers, shots=1024, seed=None):
                     c = randint_except(n_wires, {j})
                     wires = [j, c]
                 elif op.num_wires == 3:
-                    c =  randint_except(n_wires, {j})
-                    cc = randint_except(n_wires, {j,c})
+                    c = randint_except(n_wires, {j})
+                    cc = randint_except(n_wires, {j, c})
                     wires = [j, c, cc]
                 elif op.num_wires == n_wires:
                     wires = list(range(n_wires))
                 else:
                     wires = j
 
-                args = {'wires': wires}
+                args = {"wires": wires}
 
                 parameters = dict(signature(op).parameters)
-                if 'phi' in parameters:
-                    args['phi'] = random.random() * 2 * math.pi
-                if 'theta' in parameters:
-                    args['theta'] = random.random() * 2 * math.pi
-                if 'delta' in parameters:
-                    args['delta'] = random.random() * 2 * math.pi
+                if "phi" in parameters:
+                    args["phi"] = random.random() * 2 * math.pi
+                if "theta" in parameters:
+                    args["theta"] = random.random() * 2 * math.pi
+                if "delta" in parameters:
+                    args["delta"] = random.random() * 2 * math.pi
 
                 op(**args)
 
         measurement = random.choice(MEASUREMENTS)
         if measurement in ESTIMATOR_MEASUREMENTS:
             basis = random.choice([qml.PauliX, qml.PauliY, qml.PauliZ])
-            return measurement(basis(wires=random.randint(0, n_wires)))
+            return measurement(basis(wires=random.randint(0, n_wires - 1)))
         else:
-            return measurement(wires=random.sample(range(n_wires), random.randint(1, n_wires)))
+            return measurement(
+                wires=random.sample(range(n_wires), random.randint(1, n_wires))
+            )
 
     return circuit
 
 
-def statistical_match(result_a, result_b, measurement_type, tolerance=0.1):
-    if measurement_type == "expectation":
-        return abs(result_a - result_b) < tolerance * (abs(result_a) + abs(result_b)) / 2
-    elif measurement_type == "variance":
-        return abs(result_a - result_b) < tolerance * (abs(result_a) + abs(result_b)) / 2
-    else:
-        raise ValueError(f"Unknown measurement type: {measurement_type}")
+def dict_to_ndarray(a: Dict, b: Dict) -> Tuple[np.ndarray, np.ndarray]:
+
+    for k in a.keys():
+        if k not in b:
+            b[k] = 0
+    for k in b.keys():
+        if k not in a:
+            a[k] = 0
+
+    # Make sure the dictionary is sorted by keys
+    a = dict(sorted(a.items()))
+    b = dict(sorted(b.items()))
+
+    a = np.array(list(a.values()))
+    b = np.array(list(b.values()))
+
+    shots = np.sum(a)
+    if shots != np.sum(b):
+        raise ValueError("Number of shots must be equal")
+
+    return a / shots, b / shots
 
 
-if __name__ == "__main__":
+def samples_to_probs(a: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    shots = a.shape[0]
+    a = np.sum(a, axis=0) / shots
+    b = np.sum(b, axis=0) / shots
+    return a, b
 
-    n_wires = 10
-    n_layers = 20
-    seed = 42
-    shots = 4096
 
-    default_device = qml.device("default.qubit", wires=n_wires)
-    scw_device = qml.device("scaleway.aer", wires=n_wires, project_id=SCW_PROJECT_ID, secret_key=SCW_SECRET_KEY, backend=SCW_BACKEND_NAME, url=SCW_API_URL)
+def statistical_match(result_a, result_b, circuit, tolerance=0.1):
+
+    if type(result_b) != type(result_a):
+        return False
+
+    if isinstance(result_a, (int, float)):
+        return abs(result_a - result_b) < tolerance  # Direct scalar comparison
 
     try:
+        tape = circuit._tape
+    except Exception as e:
+        raise ValueError(
+            f"Could not construct tape from circuit. "
+            f"Ensure circuit can be called with no arguments. Error: {e}"
+        )
 
-        for _ in range(3):
+    if not tape.measurements:
+        raise ValueError("Circuit has no measurements to compare.")
 
-            default_circuit = random_circuit_generator(default_device, n_wires=n_wires, n_layers=n_layers, seed=seed, shots=shots)
+    measurement = tape.measurements[0]
+    m_type = type(measurement)
 
-            print("="*50)
-            print("\nDEFAULT CIRCUIT:\n")
-            print(qml.draw(default_circuit)())
-            print("\nDEFAULT RESULTS:\n")
+    if m_type == CountsMP and isinstance(result_a, dict):
+        result_a, result_b = dict_to_ndarray(result_a, result_b)
+
+    elif m_type == SampleMP and isinstance(result_a, np.ndarray):
+        result_a, result_b = samples_to_probs(result_a, result_b)
+
+    return np.allclose(result_a, result_b, atol=tolerance)
+
+
+def main():
+
+    n_wires = 5
+    n_layers = 10
+    shots = 4096
+    seed = None  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
+
+    print_ascii_art()
+
+    default_device = qml.device("default.qubit", wires=n_wires)
+    scw_device = qml.device(
+        "scaleway.aer",
+        wires=n_wires,
+        project_id=SCW_PROJECT_ID,
+        secret_key=SCW_SECRET_KEY,
+        backend=SCW_BACKEND_NAME,
+        url=SCW_API_URL,
+    )
+
+    try:
+        for i in range(100):
+            if not seed:
+                seed = random.randint(0, 1000000000)
+
+            default_circuit = random_circuit_generator(
+                default_device,
+                n_wires=n_wires,
+                n_layers=n_layers,
+                seed=seed,
+                shots=shots,
+            )
             default_result = default_circuit()
-            print(default_result)
 
-            scw_circuit = random_circuit_generator(scw_device, n_wires=n_wires, n_layers=n_layers, seed=seed, shots=shots)
-
-            print("="*50)
-            print("\nSCALEWAY CIRCUIT:\n")
-            print(qml.draw(scw_circuit)())
-            print("\nSCALEWAY RESULTS:\n")
+            scw_circuit = random_circuit_generator(
+                scw_device,
+                n_wires=n_wires,
+                n_layers=n_layers,
+                seed=seed,
+                shots=shots,
+            )
             scw_result = scw_circuit()
-            print(scw_result)
 
-            # assert statistical_match(default_result, scw_result, measurement_type), f"Results do not match!"
+            assert statistical_match(
+                default_result, scw_result, default_circuit
+            ), f"ERROR: Results do not match!"
 
-            seed = random.randint(0, 1000000000)
-            print(f"Seed: {seed}")
-    
-    # except Exception as e:
-    #     print(f"EXCEPTION RAISED: {e}")
-    #     print(qml.to_openqasm(scw_circuit)())
-    #     raise Exception(e) from e
+            print(f"#{i:03d} - Seed: {seed} - ✓")
+
+            seed = None
+
+    except Exception as e:
+        print(f"EXCEPTION RAISED: {e}")
+
+        print(f"Seed: {seed}")
+
+        random.seed(seed)
+
+        print("=" * 50)
+        print("\nDEFAULT CIRCUIT:\n")
+        print(qml.draw(default_circuit)())
+        print("\nDEFAULT RESULTS:\n")
+        print(default_result)
+
+        random.seed(seed)
+
+        print("=" * 50)
+        print("\nSCALEWAY CIRCUIT:\n")
+        print(qml.draw(scw_circuit)())
+        print("\nSCALEWAY RESULTS:\n")
+        print(scw_result)
 
     finally:
         scw_device.stop()
 
     print("Done!")
+
+
+def print_ascii_art():
+    art = r"""
+  █████   ███▄    █  ▒█████  ▓█████▄ ▓█████         
+▒██▓  ██▒ ██ ▀█   █ ▒██▒  ██▒▒██▀ ██▌▓█   ▀         
+▒██▒  ██░▓██  ▀█ ██▒▒██░  ██▒░██   █▌▒███           
+░██  █▀ ░▓██▒  ▐▌██▒▒██   ██░░▓█▄   ▌▒▓█  ▄         
+░▒███▒█▄ ▒██░   ▓██░░ ████▓▒░░▒████▓ ░▒████▒        
+░░ ▒▒░ ▒ ░ ▒░   ▒ ▒ ░ ▒░▒░▒░  ▒▒▓  ▒ ░░ ▒░ ░        
+ ░ ▒░  ░ ░ ░░   ░ ▒░  ░ ▒ ▒░  ░ ▒  ▒  ░ ░  ░        
+   ░   ░    ░   ░ ░ ░ ░ ░ ▒   ░ ░  ░    ░           
+    ░             ░     ░ ░     ░       ░  ░        
+                              ░                     
+  ██████ ▄▄▄█████▓ ██▀███  ▓█████   ██████   ██████ 
+▒██    ▒ ▓  ██▒ ▓▒▓██ ▒ ██▒▓█   ▀ ▒██    ▒ ▒██    ▒ 
+░ ▓██▄   ▒ ▓██░ ▒░▓██ ░▄█ ▒▒███   ░ ▓██▄   ░ ▓██▄   
+  ▒   ██▒░ ▓██▓ ░ ▒██▀▀█▄  ▒▓█  ▄   ▒   ██▒  ▒   ██▒
+▒██████▒▒  ▒██▒ ░ ░██▓ ▒██▒░▒████▒▒██████▒▒▒██████▒▒
+▒ ▒▓▒ ▒ ░  ▒ ░░   ░ ▒▓ ░▒▓░░░ ▒░ ░▒ ▒▓▒ ▒ ░▒ ▒▓▒ ▒ ░
+░ ░▒  ░ ░    ░      ░▒ ░ ▒░ ░ ░  ░░ ░▒  ░ ░░ ░▒  ░ ░
+░  ░  ░    ░        ░░   ░    ░   ░  ░  ░  ░  ░  ░  
+      ░              ░        ░  ░      ░        ░  
+                                                    
+▄▄▄█████▓▓█████   ██████ ▄▄▄█████▓                  
+▓  ██▒ ▓▒▓█   ▀ ▒██    ▒ ▓  ██▒ ▓▒                  
+▒ ▓██░ ▒░▒███   ░ ▓██▄   ▒ ▓██░ ▒░                  
+░ ▓██▓ ░ ▒▓█  ▄   ▒   ██▒░ ▓██▓ ░                   
+  ▒██▒ ░ ░▒████▒▒██████▒▒  ▒██▒ ░                   
+  ▒ ░░   ░░ ▒░ ░▒ ▒▓▒ ▒ ░  ▒ ░░                     
+    ░     ░ ░  ░░ ░▒  ░ ░    ░                      
+  ░         ░   ░  ░  ░    ░                        
+            ░  ░      ░                             
+    """
+    print(art)
+
+
+if __name__ == "__main__":
+    main()
