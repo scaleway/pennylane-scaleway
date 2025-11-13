@@ -192,8 +192,8 @@ def statistical_match(result_a, result_b, circuit, tolerance=0.1):
 
 def main():
 
-    n_wires = 5
-    n_layers = 10
+    n_wires = 20
+    n_layers = 20
     shots = 4096
     seed = None  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
 
@@ -242,22 +242,19 @@ def main():
 
     except Exception as e:
         print(f"EXCEPTION RAISED: {e}")
-
         print(f"Seed: {seed}")
 
         random.seed(seed)
 
         print("=" * 50)
-        print("\nDEFAULT CIRCUIT:\n")
+        print("\nCIRCUIT:\n")
         print(qml.draw(default_circuit)())
+
+        print("=" * 50)
         print("\nDEFAULT RESULTS:\n")
         print(default_result)
 
-        random.seed(seed)
-
         print("=" * 50)
-        print("\nSCALEWAY CIRCUIT:\n")
-        print(qml.draw(scw_circuit)())
         print("\nSCALEWAY RESULTS:\n")
         print(scw_result)
 
