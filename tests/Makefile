@@ -1,20 +1,25 @@
 SHELL := /bin/bash
 
 .PHONY: install-pennylane-scaleway
-install-pennylane-scaleway:
+install-pennylane-scaleway: install-dependencies
 	pip install "..[aer]"
 
 .PHONY: install-dependencies
-install-dependencies: install
+install-dependencies:
+	pip install --upgrade pip
+	pip install -Ur ../requirements.txt
+
+.PHONY: install-tests-dependencies
+install-tests-dependencies:
 	pip install --upgrade pip
 	pip install -Ur requirements.txt
 
 .PHONY: test-aer
-test-aer: install-pennylane-scaleway print-env
-	pytest -s --showprogress -vv test_aer_device.py
+test-aer: install-tests-dependencies print-env
+	pytest -v -s test_aer_device.py
 
-.PHONY: randomized-circuits-test
-randomized-circuits-test: install-pennylane-scaleway print-env
+.PHONY: test-randomized-circuits
+test-randomized-circuits: install-pennylane-scaleway print-env
 	python randomized_circuits_test.py
 
 .PHONY: print-env

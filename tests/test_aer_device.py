@@ -25,7 +25,7 @@ SCW_SECRET_KEY = os.environ["SCW_SECRET_KEY"]
 SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "aer_simulation_pop_c16m128")
 SCW_API_URL = os.getenv("SCW_API_URL")
 
-SHOTS = 100
+SHOTS = 4096
 
 
 @pytest.fixture(scope="module")
@@ -66,23 +66,26 @@ def test_device_instantiation(device_kwargs):
 def test_invalid_device_manipulation(device_kwargs):
     """Test invalid device manipulation."""
 
-    device_kwargs["useless_key"] = "useless_value"
+    device_kwargs_copy = device_kwargs.copy()
+
+    device_kwargs_copy["useless_key"] = "useless_value"
     with pytest.warns(
         UserWarning, match="The following keyword arguments are not supported by "
     ):
-        qml.device("scaleway.aer", wires=2, **device_kwargs)
-    device_kwargs.pop("useless_key")
+        device = qml.device("scaleway.aer", wires=2, **device_kwargs_copy)
+        max_qubits = device._platform.num_qubits
+    device_kwargs_copy.pop("useless_key")
 
     with pytest.warns(UserWarning, match="Number of wires "):
-        qml.device("scaleway.aer", wires=1000000000, **device_kwargs)
+        qml.device("scaleway.aer", wires=max_qubits + 1, **device_kwargs_copy)
 
-    device = qml.device("scaleway.aer", wires=2, **device_kwargs)
-    with pytest.raises(ValueError, match="No session running"):
+    device = qml.device("scaleway.aer", wires=2, **device_kwargs_copy)
+    with pytest.raises(RuntimeError, match="No session running."):
         device.stop()
 
-    device_kwargs["backend"] = "invalid_backend"
+    device_kwargs_copy["backend"] = "invalid_backend"
     with pytest.raises(ValueError, match="Platform "):
-        qml.device("scaleway.aer", wires=2, **device_kwargs)
+        qml.device("scaleway.aer", wires=2, **device_kwargs_copy)
 
 
 def test_bell_state_probs(device_2wires):
@@ -110,7 +113,6 @@ def test_bell_state_probs(device_2wires):
 def test_bell_state_expval_analytic(device_2wires):
     """Tests expval() with shots=None (analytic)."""
 
-    @qml.set_shots(SHOTS)
     @qml.qnode(device_2wires)
     def circuit_expval():
         qml.Hadamard(wires=0)
@@ -186,7 +188,6 @@ def test_hadamard_samples(device_kwargs):
 def test_pauli_z_variance_analytic(device_2wires):
     """Tests var() with shots=None (analytic)."""
 
-    @qml.set_shots(SHOTS)
     @qml.qnode(device_2wires)
     def circuit_var():
         qml.Hadamard(wires=0)  # State is |+>
@@ -230,22 +231,19 @@ def test_shot_vector_error(device_kwargs):
 
             circuit()
 
-    with pytest.warns(
-        PennyLaneDeprecationWarning, match="Setting shots on device is deprecated"
+    with pytest.raises(
+        ValueError, match="Only integer number of shots is supported on this device"
     ):
-        with pytest.raises(
-            ValueError, match="Only integer number of shots is supported on this device"
-        ):
-            with qml.device(
-                "scaleway.aer", wires=1, shots=[10, 20], **device_kwargs
-            ) as dev:
+        with qml.device(
+            "scaleway.aer", wires=1, shots=[10, 20], **device_kwargs
+        ) as dev:
 
-                @qml.qnode(dev)
-                def circuit():
-                    qml.Hadamard(wires=0)
-                    return qml.expval(qml.PauliZ(0))
+            @qml.qnode(dev)
+            def circuit():
+                qml.Hadamard(wires=0)
+                return qml.expval(qml.PauliZ(0))
 
-                circuit()
+            circuit()
 
 
 def test_mixed_measurement_bell_state(device_2wires):
@@ -291,7 +289,7 @@ def test_random_circuit(device_kwargs):
     """Test that a large, complex circuit can be executed."""
 
     n_qubits = 10
-    n_operations = 100
+    n_operations = 200
 
     with qml.device("scaleway.aer", wires=n_qubits, **device_kwargs) as dev:
 
