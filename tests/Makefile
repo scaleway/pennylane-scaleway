@@ -1,18 +1,21 @@
 SHELL := /bin/bash
 
-.PHONY: install
-install:
-	pip3 install --upgrade pip
-	pip3 install -Ur requirements.txt
-	pip3 install "..[aer]"
+.PHONY: install-pennylane-scaleway
+install-pennylane-scaleway:
+	pip install "..[aer]"
+
+.PHONY: install-dependencies
+install-dependencies: install
+	pip install --upgrade pip
+	pip install -Ur requirements.txt
 
 .PHONY: test-aer
-test-aer: install print-env
+test-aer: install-pennylane-scaleway print-env
 	pytest -s --showprogress -vv test_aer_device.py
 
-.PHONY: test-qnode-stress-test
-test-qnode-stress-test: install print-env
-	python comparative_tests_generator.py
+.PHONY: randomized-circuits-test
+randomized-circuits-test: install-pennylane-scaleway print-env
+	python randomized_circuits_test.py
 
 .PHONY: print-env
 print-env:
@@ -25,5 +28,5 @@ print-env:
 
 .PHONY: black
 black:
-	pip3 install black
+	pip install black
 	black ..

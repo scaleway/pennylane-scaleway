@@ -30,7 +30,24 @@ class ScalewayDevice(Device, ABC):
 
     name = "scaleway.base"
 
-    def __init__(self, wires, shots=None, **kwargs):
+    def __init__(self, wires, kwargs, shots=None):
+        """
+        Params:
+
+            wires (int, Iterable): Number of subsystems represented by the device,
+                or iterable that contains a unique label for each subsystem.
+            shots (int, Sequence[int], ~pennylane.measurements.Shots): Number of circuit evaluations to run.
+            **kwargs:
+                - project_id (str): The Scaleway Quantum Project ID.
+                - secret_key (str): The API token for authentication with Scaleway.
+                - backend (str): The specific quantum backend to run on Scaleway.
+                - url (str): The Scaleway API URL (optional).
+                - session_name (str): Name of the session (optional).
+                - deduplication_id (str): Unique deduplication identifier for session (optional).
+                - max_duration (str): Maximum uptime session duration (e.g., "1h", "30m") (optional).
+                - max_idle_duration (str): Maximum idle session duration (e.g., "1h", "5m") (optional).
+        """
+
         super().__init__(wires=wires, shots=shots)
 
         ### Setup Scaleway API and backend

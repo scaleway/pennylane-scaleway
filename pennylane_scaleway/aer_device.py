@@ -36,24 +36,14 @@ from qiskit.primitives.backend_sampler_v2 import Options as SamplerOptions
 
 from qiskit_scaleway.primitives import Estimator, Sampler
 
-from pennylane_scaleway import ScalewayDevice
-
-try:
-    from .aer_utils import (
-        QISKIT_OPERATION_MAP,
-        accepted_sample_measurement,
-        circuit_to_qiskit,
-        mp_to_pauli,
-        split_execution_types,
-    )
-except ImportError:
-    from pennylane_scaleway.aer_utils import (
-        QISKIT_OPERATION_MAP,
-        accepted_sample_measurement,
-        circuit_to_qiskit,
-        mp_to_pauli,
-        split_execution_types,
-    )
+from pennylane_scaleway.scw_device import ScalewayDevice
+from pennylane_scaleway.aer_utils import (
+    QISKIT_OPERATION_MAP,
+    accepted_sample_measurement,
+    circuit_to_qiskit,
+    mp_to_pauli,
+    split_execution_types,
+)
 
 
 @qml.transform
@@ -70,6 +60,17 @@ def analytic_warning(tape: QuantumTape):
 
 
 class AerDevice(ScalewayDevice):
+    """
+    This is Scaleway's device to run Pennylane's circuits on Aer emulators.
+
+    This device:
+        * Supports any operations with explicit PennyLane to Qiskit gate conversions defined in the plugin.
+        * Supports both CPU and GPU Aer backends.
+        * Approximates analytic calculations by sampling.
+        * Does not support Shots vector.
+        * Does not support state vector simulation.
+        * Does not intrinsically support parameter broadcasting.
+    """
 
     name = "scaleway.aer"
 
@@ -89,13 +90,49 @@ class AerDevice(ScalewayDevice):
     }
 
     def __init__(self, wires=None, shots=None, seed=None, **kwargs):
+        """
+        Params:
+
+            wires (int, Iterable): Number of subsystems represented by the device,
+                or iterable that contains a unique label for each subsystem.
+            shots (int, ~pennylane.measurements.Shots): DEPRECATED, use the qml.set_shot() decorator for each QNode instead. Number of circuit evaluations to run.
+            seed (int): Random seed used to initialize the pseudo-random number generator.
+            **kwargs:
+                - project_id (str): The Scaleway Quantum Project ID.
+                - secret_key (str): The API token for authentication with Scaleway.
+                - backend (str): The specific quantum backend to run on Scaleway.
+                - url (str): The Scaleway API URL (optional).
+                - session_name (str): Name of the session (optional).
+                - deduplication_id (str): Unique deduplication identifier for session (optional).
+                - max_duration (str): Maximum uptime session duration (e.g., "1h", "30m") (optional).
+                - max_idle_duration (str): Maximum idle session duration (e.g., "1h", "5m") (optional).
+                - Any options supported by qiskit's BackendSamplerV2 or BackendEstimatorV2 primitives (optional).
+
+        Example:
+            ```python
+            import pennylane as qml
+
+            with qml.device("scaleway.aer",
+                wires=2,
+                project_id=<your-project-id>,
+                secret_key=<your-secret-key>,
+                backend="aer_simulation_pop_c16m128"
+            ) as dev:
+                @qml.qnode(dev)
+                def circuit():
+                    qml.Hadamard(wires=0)
+                    qml.CNOT(wires=[0, 1])
+                    return qml.sample()
+                print(circuit())
+            ```
+        """
 
         if shots and not isinstance(shots, int):
             raise ValueError(
                 "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
             )
 
-        super().__init__(wires=wires, shots=shots, kwargs=kwargs)
+        super().__init__(wires=wires, kwargs=kwargs, shots=shots)
 
         if isinstance(seed, int):
             kwargs.update({"seed_simulator": seed})
@@ -128,28 +165,17 @@ class AerDevice(ScalewayDevice):
             for k in (self._sampler_options.keys() | self._estimator_options.keys())
         ]
 
-        self._kwargs = kwargs
+        if len(kwargs) > 0:
+            warnings.warn(
+                f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
+                UserWarning,
+            )
 
     def preprocess(
         self,
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
-        """This function defines the device transform program to be applied and an updated device configuration.
 
-        Args:
-            execution_config (Union[ExecutionConfig, Sequence[ExecutionConfig]]): A data structure describing the
-                parameters needed to fully describe the execution.
-
-        Returns:
-            TransformProgram, ExecutionConfig: A transform program that when called returns QuantumTapes that the device
-            can natively execute as well as a postprocessing function to be called after execution, and a configuration with
-            unset specifications filled in.
-
-        This device:
-
-        * Supports any operations with explicit PennyLane to Qiskit gate conversions defined in the plugin
-        * Does not intrinsically support parameter broadcasting
-        """
         config = execution_config or ExecutionConfig()
         config = replace(config, use_device_gradient=False)
 
@@ -354,7 +380,6 @@ class AerDevice(ScalewayDevice):
         return obs.name in self.observables
 
 
-
 if __name__ == "__main__":
 
     import os
@@ -368,10 +393,11 @@ if __name__ == "__main__":
         shots=100,
         seed=42,
         max_duration="42m",
+        abelian_grouping=True,
+        test="useless",
     ) as device:
 
         ### Simple bell state circuit execution
-
         @qml.qnode(device)
         def circuit():
             qml.Hadamard(wires=0)
@@ -380,56 +406,3 @@ if __name__ == "__main__":
 
         result = circuit()
         print(result)
-
-        ### Testing different output types for the same circuit
-
-        # Counts
-        @qml.set_shots(10)
-        @qml.qnode(device)
-        def circuit() -> QuantumScript:
-            qml.Hadamard(wires=0)
-            qml.Hadamard(wires=0)
-            return qml.counts(wires=0)
-
-        counts = circuit()
-        assert counts == {"0": 10}, "Expected {'0': 10}, got " + str(counts)
-
-        # Expectation value
-        @qml.set_shots(1024)
-        @qml.qnode(device)
-        def circuit() -> QuantumScript:
-            qml.Hadamard(wires=0)
-            qml.CNOT(wires=[0, 1])
-            return qml.expval(qml.PauliZ(0))
-
-        epsilon = 0.1
-        expval = circuit()
-        assert np.isclose(expval, 0.0, atol=epsilon), f"Expected ~0.0, got {expval}"
-
-        # Probabilities
-        @qml.set_shots(1024)
-        @qml.qnode(device)
-        def circuit() -> QuantumScript:
-            qml.Hadamard(wires=0)
-            qml.CNOT(wires=[0, 1])
-            return qml.probs(wires=[0, 1])
-
-        probs = circuit()
-        assert np.allclose(
-            [0.5, 0.0, 0.0, 0.5], probs, atol=epsilon
-        ), f"Expected ~[0.5, 0.0, 0.0, 0.5], got {probs}"
-
-        # Samples
-        @qml.set_shots(10)
-        @qml.qnode(device)
-        def circuit() -> QuantumScript:
-            qml.Hadamard(wires=0)
-            qml.Hadamard(wires=0)
-            return qml.sample(wires=0)
-
-        samples = circuit()
-        assert np.array_equal(
-            [np.array([0])] * 10, samples
-        ), f"Expected [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], got {samples}"
-
-        print("Passed!")
