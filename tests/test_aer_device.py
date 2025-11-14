@@ -25,6 +25,8 @@ SCW_SECRET_KEY = os.environ["SCW_SECRET_KEY"]
 SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "aer_simulation_pop_c16m128")
 SCW_API_URL = os.getenv("SCW_API_URL")
 
+SHOTS = 4096
+
 
 @pytest.fixture(scope="module")
 def device_kwargs():
@@ -44,15 +46,9 @@ def device_2wires(device_kwargs):
         yield dev
 
 
-@pytest.fixture
-def device_2wires_shots(device_kwargs):
-    """Fixture for a 2-wire device with 1024 shots."""
-    with qml.device("scaleway.aer", wires=2, shots=1024, **device_kwargs) as dev:
-        yield dev
-
-
 def test_device_instantiation(device_kwargs):
     """Test basic device loading and session start/stop."""
+    print(device_kwargs)
     with qml.device("scaleway.aer", wires=2, **device_kwargs) as dev:
         assert dev.name == "scaleway.aer"
         assert dev.num_wires == 2
@@ -67,10 +63,36 @@ def test_device_instantiation(device_kwargs):
         dev.stop()
 
 
-def test_bell_state_probs(device_2wires_shots):
+def test_invalid_device_manipulation(device_kwargs):
+    """Test invalid device manipulation."""
+
+    device_kwargs_copy = device_kwargs.copy()
+
+    device_kwargs_copy["useless_key"] = "useless_value"
+    with pytest.warns(
+        UserWarning, match="The following keyword arguments are not supported by "
+    ):
+        device = qml.device("scaleway.aer", wires=2, **device_kwargs_copy)
+        max_qubits = device._platform.num_qubits
+    device_kwargs_copy.pop("useless_key")
+
+    with pytest.warns(UserWarning, match="Number of wires "):
+        qml.device("scaleway.aer", wires=max_qubits + 1, **device_kwargs_copy)
+
+    device = qml.device("scaleway.aer", wires=2, **device_kwargs_copy)
+    with pytest.raises(RuntimeError, match="No session running."):
+        device.stop()
+
+    device_kwargs_copy["backend"] = "invalid_backend"
+    with pytest.raises(ValueError, match="Platform "):
+        qml.device("scaleway.aer", wires=2, **device_kwargs_copy)
+
+
+def test_bell_state_probs(device_2wires):
     """Tests probs() for a Bell state."""
 
-    @qml.qnode(device_2wires_shots)
+    @qml.set_shots(SHOTS)
+    @qml.qnode(device_2wires)
     def circuit_probs():
         qml.Hadamard(wires=0)
         qml.CNOT(wires=[0, 1])
@@ -104,10 +126,11 @@ def test_bell_state_expval_analytic(device_2wires):
     assert np.isclose(expval, 0.0, atol=0.1)
 
 
-def test_bell_state_expval_shots(device_2wires_shots):
+def test_bell_state_expval_shots(device_2wires):
     """Tests expval() with shots (Estimator)."""
 
-    @qml.qnode(device_2wires_shots)
+    @qml.set_shots(SHOTS)
+    @qml.qnode(device_2wires)
     def circuit_expval():
         qml.Hadamard(wires=0)
         qml.CNOT(wires=[0, 1])
@@ -123,37 +146,43 @@ def test_bell_state_expval_shots(device_2wires_shots):
 def test_hadamard_counts(device_kwargs):
     """Tests counts() measurement."""
 
-    # Use a specific shot count for this test
-    with qml.device("scaleway.aer", wires=1, shots=100, **device_kwargs) as dev:
+    with pytest.warns(
+        PennyLaneDeprecationWarning, match="Setting shots on device is deprecated"
+    ):
+        # Use a specific shot count for this test
+        with qml.device("scaleway.aer", wires=1, shots=100, **device_kwargs) as dev:
 
-        @qml.qnode(dev)
-        def circuit_counts():
-            qml.Hadamard(wires=0)
-            qml.Hadamard(wires=0)  # H.H = I, state is |0>
-            return qml.counts(wires=0)
+            @qml.qnode(dev)
+            def circuit_counts():
+                qml.Hadamard(wires=0)
+                qml.Hadamard(wires=0)  # H.H = I, state is |0>
+                return qml.counts(wires=0)
 
-        counts = circuit_counts()
+            counts = circuit_counts()
 
-        assert isinstance(counts, dict)
-        assert counts == {"0": 100}
+            assert isinstance(counts, dict)
+            assert counts == {"0": 100}
 
 
 def test_hadamard_samples(device_kwargs):
     """Tests sample() measurement."""
 
-    with qml.device("scaleway.aer", wires=1, shots=50, **device_kwargs) as dev:
+    with pytest.warns(
+        PennyLaneDeprecationWarning, match="Setting shots on device is deprecated"
+    ):
+        with qml.device("scaleway.aer", wires=1, shots=50, **device_kwargs) as dev:
 
-        @qml.qnode(dev)
-        def circuit_samples():
-            qml.Hadamard(wires=0)
-            qml.Hadamard(wires=0)  # State is |0>
-            return qml.sample(wires=0)
+            @qml.qnode(dev)
+            def circuit_samples():
+                qml.Hadamard(wires=0)
+                qml.Hadamard(wires=0)  # State is |0>
+                return qml.sample(wires=0)
 
-        samples = circuit_samples()
+            samples = circuit_samples()
 
-        assert isinstance(samples, np.ndarray)
-        assert samples.shape == (50, 1)
-        assert np.all(samples == 0)
+            assert isinstance(samples, np.ndarray)
+            assert samples.shape == (50, 1)
+            assert np.all(samples == 0)
 
 
 def test_pauli_z_variance_analytic(device_2wires):
@@ -171,10 +200,11 @@ def test_pauli_z_variance_analytic(device_2wires):
     assert np.isclose(var, 1.0, atol=0.01)
 
 
-def test_pauli_z_variance_shots(device_2wires_shots):
+def test_pauli_z_variance_shots(device_2wires):
     """Tests var() with shots."""
 
-    @qml.qnode(device_2wires_shots)
+    @qml.set_shots(SHOTS)
+    @qml.qnode(device_2wires)
     def circuit_var():
         qml.Hadamard(wires=0)  # State is |+>
         # Var(Z) for |+> = <Z^2> - <Z>^2 = <I> - 0^2 = 1
@@ -216,13 +246,14 @@ def test_shot_vector_error(device_kwargs):
             circuit()
 
 
-def test_mixed_measurement_bell_state(device_2wires_shots):
+def test_mixed_measurement_bell_state(device_2wires):
     """
     Tests the execution of a Bell state circuit returning both
     expectation value (Estimator path) and probabilities (Sampler path).
     """
 
-    @qml.qnode(device_2wires_shots)
+    @qml.set_shots(SHOTS)
+    @qml.qnode(device_2wires)
     def circuit():
         qml.Hadamard(0)
         qml.CNOT([0, 1])
@@ -254,15 +285,15 @@ def test_mixed_measurement_bell_state(device_2wires_shots):
     ), f"Expected probs ~{expected_probs}, but got {result_probs}"
 
 
-def test_huge_circuit(device_kwargs):
+def test_random_circuit(device_kwargs):
     """Test that a large, complex circuit can be executed."""
 
     n_qubits = 10
-    n_operations = 100
+    n_operations = 200
 
-    # Initialize device with credentials and shots
     with qml.device("scaleway.aer", wires=n_qubits, **device_kwargs) as dev:
 
+        @qml.set_shots(SHOTS)
         @qml.qnode(dev)
         def circuit():
             for i in range(n_qubits):
@@ -293,6 +324,7 @@ def test_variational_circuit(device_kwargs):
     with qml.device("scaleway.aer", wires=1, **device_kwargs) as dev:
 
         @qml.set_shots(100)
+        @qml.set_shots(SHOTS)
         @qml.qnode(dev)
         def circuit(x):
             qml.RX(x, wires=0)
