@@ -13,7 +13,8 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Tuple
+import warnings
 
 from pennylane.devices import Device, ExecutionConfig
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
@@ -21,14 +22,13 @@ from pennylane.tape import QuantumScriptOrBatch
 from pennylane.transforms.core import TransformProgram
 
 from qiskit_scaleway import ScalewayProvider
+from qiskit_scaleway.backends import BaseBackend
 
 
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class ScalewayDevice(Device, ABC):
     """A Base PennyLane device that runs on Scaleway. Used as interface for all platforms."""
-
-    name = "scaleway.base"
 
     def __init__(self, wires, kwargs, shots=None):
         """
@@ -59,16 +59,23 @@ class ScalewayDevice(Device, ABC):
             url=kwargs.pop("url", None),
         )
 
-        platforms = [platform for platform in self._provider.backends()]
+        platforms = self._provider.backends()
         if backend not in [platform.name for platform in platforms]:
             raise ValueError(
-                f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms if platform.availability == 'available']}."
+                f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms if (platform.availability == 'available' and type(platform) in self.backend_types)]}."
             )
 
         self._platform = self._provider.get_backend(backend)
         if self._platform.availability != "available":
             raise RuntimeError(
                 f"Platform '{backend}' is not available. Please try again later, or check availability at https://console.scaleway.com/qaas/sessions/create."
+            )
+
+        if self.num_wires > self._platform.num_qubits:
+            warnings.warn(
+                f"Number of wires ({self.num_wires}) exceeds the theoretical limit of qubits in the platform ({self._platform.num_qubits})."
+                "This may lead to unexpected behavior and crash.",
+                UserWarning,
             )
 
         ### Extract Scaleway's session-specific arguments
@@ -94,6 +101,16 @@ class ScalewayDevice(Device, ABC):
         circuits: QuantumScriptOrBatch,
         execution_config: ExecutionConfig | None = None,
     ) -> List:
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        pass
+
+    @property
+    @abstractmethod
+    def backend_types(self) -> Tuple[BaseBackend]:
         pass
 
     def start(self) -> str:

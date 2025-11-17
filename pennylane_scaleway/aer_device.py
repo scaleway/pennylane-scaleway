@@ -35,6 +35,7 @@ from qiskit.primitives.backend_estimator_v2 import Options as EstimatorOptions
 from qiskit.primitives.backend_sampler_v2 import Options as SamplerOptions
 
 from qiskit_scaleway.primitives import Estimator, Sampler
+from qiskit_scaleway.backends import AerBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.aer_utils import (
@@ -73,6 +74,7 @@ class AerDevice(ScalewayDevice):
     """
 
     name = "scaleway.aer"
+    backend_types = (AerBackend,)
 
     operations = set(QISKIT_OPERATION_MAP.keys())
     observables = {
@@ -132,20 +134,13 @@ class AerDevice(ScalewayDevice):
                 "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
             )
 
-        super().__init__(wires=wires, kwargs=kwargs, shots=shots)
-
         if isinstance(seed, int):
             kwargs.update({"seed_simulator": seed})
         self._rng = np.random.default_rng(seed)
 
-        self._handle_kwargs(**kwargs)
+        super().__init__(wires=wires, kwargs=kwargs, shots=shots)
 
-        if self.num_wires > self._platform.num_qubits:
-            warnings.warn(
-                f"Number of wires ({self.num_wires}) exceeds the theoretical limit of qubits in the platform ({self._platform.num_qubits})."
-                "This may lead to unexpected behavior and crash.",
-                UserWarning,
-            )
+        self._handle_kwargs(**kwargs)
 
     def _handle_kwargs(self, **kwargs):
 

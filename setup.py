@@ -21,11 +21,12 @@ requirements = open("requirements.txt").readlines()
 requirements = [r.strip() for r in requirements]
 extras_require = {
     "aer": ["qiskit-scaleway"],
-    "aqt": ["qiskit-aqt-provider"],
+    "aqt": ["qiskit-scaleway"],
 }
 
 devices_list = [
     "scaleway.aer = pennylane_scaleway:AerDevice",
+    "scaleway.aqt = pennylane_scaleway:AqtDevice",
 ]
 
 setup(

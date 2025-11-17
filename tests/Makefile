@@ -15,7 +15,7 @@ install-tests-dependencies:
 	pip install -Ur requirements.txt
 
 .PHONY: test-aer
-test-aer: install-tests-dependencies print-env
+test-aer: install-tests-dependencies install-pennylane-scaleway print-env
 	pytest -v -s test_aer_device.py
 
 .PHONY: test-randomized-circuits

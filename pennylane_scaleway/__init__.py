@@ -14,4 +14,5 @@
 
 from .scw_device import ScalewayDevice
 from .aer_device import AerDevice
+from .aqt_device import AqtDevice
 from .aer_utils import circuit_to_qiskit
