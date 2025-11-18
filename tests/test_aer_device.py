@@ -353,3 +353,55 @@ def test_variational_circuit(device_kwargs):
         assert np.allclose(
             final_prob_1, 1.0, atol=0.2
         ), f"Expected P(|1>) ~ 1.0, got {final_prob_1}"
+
+
+def test_tracker(device_kwargs):
+    """Test that the device tracker works correctly."""
+    with qml.device("scaleway.aer", wires=1, **device_kwargs) as dev:
+
+        @qml.qnode(dev)
+        def circuit(x):
+            qml.RX(x, wires=0)
+            qml.Hadamard(wires=0)
+            return qml.probs(wires=0)
+
+        # Check proper initialization, without tracking out of context
+        assert not dev.tracker.active
+        circuit(4.2)
+        assert dev.tracker.history == dev.tracker.latest == dev.tracker.totals == {}
+
+        with dev.tracker:
+            assert dev.tracker.active
+            assert dev.tracker.history == dev.tracker.latest == dev.tracker.totals == {}
+
+            # Checks simple execution tracking
+            circuit(2.1)
+            assert dev.tracker.history["executions"] and (
+                len(dev.tracker.history["executions"]) == 1
+            )
+            assert dev.tracker.totals["executions"] and (
+                dev.tracker.totals["executions"] == 1
+            )
+            assert dev.tracker.latest["executions"] and (
+                dev.tracker.latest["executions"] == 1
+            )
+
+        with dev.tracker:
+            # Checks multiple executions at once, as well as persistent tracking between contexts
+            circuit([0.0, 0.5, 1.0])
+            assert len(dev.tracker.history["executions"]) == 4
+            assert dev.tracker.totals["executions"] == 4
+            assert dev.tracker.latest["executions"] == 1
+
+            history = dev.tracker.history.copy()
+            totals = dev.tracker.totals.copy()
+            latest = dev.tracker.latest.copy()
+
+        # Checks that out of context execution is not tracked
+        circuit(3.14)
+        assert history == dev.tracker.history
+        assert totals == dev.tracker.totals
+        assert latest == dev.tracker.latest
+
+    # Checks that stopping the device resets its tracker
+    assert dev.tracker.history == dev.tracker.latest == dev.tracker.totals == {}

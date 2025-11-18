@@ -17,7 +17,6 @@ from typing import List, Tuple
 import warnings
 
 from pennylane.devices import Device, ExecutionConfig
-from pennylane.devices.modifiers import simulator_tracking, single_tape_support
 from pennylane.tape import QuantumScriptOrBatch
 from pennylane.transforms.core import TransformProgram
 
@@ -25,8 +24,6 @@ from qiskit_scaleway import ScalewayProvider
 from qiskit_scaleway.backends import BaseBackend
 
 
-@simulator_tracking  # update device.tracker with some relevant information
-@single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class ScalewayDevice(Device, ABC):
     """A Base PennyLane device that runs on Scaleway. Used as interface for all platforms."""
 
@@ -49,6 +46,7 @@ class ScalewayDevice(Device, ABC):
         """
 
         super().__init__(wires=wires, shots=shots)
+        self.tracker.persistent = True
 
         ### Setup Scaleway API and backend
         backend = kwargs.pop("backend", None)
@@ -127,6 +125,7 @@ class ScalewayDevice(Device, ABC):
         """
         if self._session_id:
             self._platform.stop_session(self._session_id)
+            self.tracker.reset()
             self._session_id = None
         else:
             raise RuntimeError("No session running.")

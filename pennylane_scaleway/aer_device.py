@@ -19,6 +19,7 @@ import warnings
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
+from pennylane.devices.modifiers import simulator_tracking, single_tape_support
 from pennylane.devices.preprocess import (
     decompose,
     validate_device_wires,
@@ -26,7 +27,7 @@ from pennylane.devices.preprocess import (
     validate_observables,
 )
 from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
-from pennylane.tape import QuantumScript, QuantumScriptOrBatch, QuantumTape
+from pennylane.tape import QuantumScript, QuantumScriptOrBatch
 from pennylane.transforms import split_non_commuting, broadcast_expand
 from pennylane.transforms.core import TransformProgram
 
@@ -45,21 +46,11 @@ from pennylane_scaleway.aer_utils import (
     mp_to_pauli,
     split_execution_types,
 )
+from pennylane_scaleway.utils import analytic_warning
 
 
-@qml.transform
-def analytic_warning(tape: QuantumTape):
-    if not tape.shots:
-        warnings.warn(
-            "The analytic calculation of results is not supported on "
-            "this device. All statistics obtained from this device are estimates based "
-            "on samples. A default number of shots will be selected by the Qiskit backend."
-            "(Shots were not set for this circuit).",
-            UserWarning,
-        )
-    return (tape,), lambda results: results[0]
-
-
+@simulator_tracking  # update device.tracker with some relevant information
+@single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class AerDevice(ScalewayDevice):
     """
     This is Scaleway's device to run Pennylane's circuits on Aer emulators.
@@ -139,6 +130,7 @@ class AerDevice(ScalewayDevice):
         self._rng = np.random.default_rng(seed)
 
         super().__init__(wires=wires, kwargs=kwargs, shots=shots)
+        # self.tracker.persistent = True
 
         self._handle_kwargs(**kwargs)
 
@@ -399,5 +391,8 @@ if __name__ == "__main__":
             qml.CNOT(wires=[0, 1])
             return qml.expval(qml.PauliZ(0))
 
-        result = circuit()
-        print(result)
+        with device.tracker:
+            result = circuit()
+
+        print(f"Result: {result}")
+        print(device.tracker.history)
