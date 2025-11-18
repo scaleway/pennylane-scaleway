@@ -28,6 +28,7 @@ SCW_API_URL = os.getenv("SCW_API_URL")
 SHOTS = 4096
 
 
+# Fixtures
 @pytest.fixture(scope="module")
 def device_kwargs():
     """Module-scoped fixture for device keyword arguments."""

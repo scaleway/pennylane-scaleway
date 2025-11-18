@@ -20,14 +20,13 @@ import warnings
 # from qiskit_aqt_provider import AQTProvider
 
 import pennylane as qml
-from pennylane.devices import Device, ExecutionConfig
+from pennylane.devices import ExecutionConfig
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
 from pennylane.tape import QuantumScriptOrBatch, QuantumScript
 from pennylane.transforms.core import TransformProgram
 
 from qiskit_scaleway import ScalewayProvider
 from qiskit_scaleway.backends import AqtBackend, AerBackend
-from qiskit_scaleway.primitives import Sampler, Estimator
 
 from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.aer_device import AerDevice
