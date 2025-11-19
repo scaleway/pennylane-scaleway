@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .PHONY: install-pennylane-scaleway
 install-pennylane-scaleway: install-dependencies
-	pip install "..[aer]"
+	pip install "..[all]"
 
 .PHONY: install-dependencies
 install-dependencies:
@@ -13,6 +13,14 @@ install-dependencies:
 install-tests-dependencies:
 	pip install --upgrade pip
 	pip install -Ur requirements.txt
+
+.PHONY: test-all
+test-all: install-tests-dependencies install-pennylane-scaleway print-env
+	pytest -v -s .
+
+.PHONY: test-scaleway
+test-scaleway: install-tests-dependencies install-pennylane-scaleway print-env
+	pytest -v -s test_scaleway_devices.py
 
 .PHONY: test-aer
 test-aer: install-tests-dependencies install-pennylane-scaleway print-env

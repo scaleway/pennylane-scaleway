@@ -47,21 +47,21 @@ def device_2wires(device_kwargs):
         yield dev
 
 
-def test_device_instantiation(device_kwargs):
-    """Test basic device loading and session start/stop."""
-    print(device_kwargs)
-    with qml.device("scaleway.aer", wires=2, **device_kwargs) as dev:
-        assert dev.name == "scaleway.aer"
-        assert dev.num_wires == 2
-        assert dev._session_id is not None
-        assert dev._platform.name == SCW_BACKEND_NAME
+# def test_device_instantiation(device_kwargs):
+#     """Test basic device loading and session start/stop."""
 
-    # After 'with' block, session should be stopped
-    assert dev._session_id is None
+#     with qml.device("scaleway.aer", wires=2, **device_kwargs) as dev:
+#         assert dev.name == "scaleway.aer"
+#         assert dev.num_wires == 2
+#         assert dev._session_id is not None
+#         assert dev._platform.name == SCW_BACKEND_NAME
 
-    # Test that calling stop() again raises an error
-    with pytest.raises(RuntimeError, match="No session running"):
-        dev.stop()
+#     # After 'with' block, session should be stopped
+#     assert dev._session_id is None
+
+#     # Test that calling stop() again raises an error
+#     with pytest.raises(RuntimeError, match="No session running"):
+#         dev.stop()
 
 
 def test_invalid_device_manipulation(device_kwargs):

@@ -82,7 +82,7 @@ class AerDevice(ScalewayDevice):
         "SProd",
     }
 
-    def __init__(self, wires=None, shots=None, seed=None, **kwargs):
+    def __init__(self, wires, shots=None, seed=None, **kwargs):
         """
         Params:
 
@@ -130,7 +130,6 @@ class AerDevice(ScalewayDevice):
         self._rng = np.random.default_rng(seed)
 
         super().__init__(wires=wires, kwargs=kwargs, shots=shots)
-        # self.tracker.persistent = True
 
         self._handle_kwargs(**kwargs)
 
@@ -332,6 +331,7 @@ class AerDevice(ScalewayDevice):
             # Format the final result tuple for this circuit
             single_measurement = len(original_circuit.measurements) == 1
             res_tuple = (res[0],) if single_measurement else tuple(res)
+            # res_tuple = res[0] if single_measurement else tuple(res)
             all_results.append(res_tuple)
 
         return all_results

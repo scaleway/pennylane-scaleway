@@ -39,7 +39,7 @@ def device_kwargs():
 @pytest.mark.parametrize("device_name", ["scaleway.aer", "scaleway.aqt"])
 def test_device_instantiation(device_name, device_kwargs):
     """Test basic device loading and session start/stop."""
-    print(device_kwargs)
+
     with qml.device(device_name, wires=2, **device_kwargs) as dev:
         assert dev.name == device_name
         assert dev.num_wires == 2

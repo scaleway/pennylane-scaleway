@@ -22,6 +22,7 @@ requirements = [r.strip() for r in requirements]
 extras_require = {
     "aer": ["qiskit-scaleway"],
     "aqt": ["qiskit-scaleway"],
+    "all": ["qiskit-scaleway"],
 }
 
 devices_list = [
