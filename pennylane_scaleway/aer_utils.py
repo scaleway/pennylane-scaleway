@@ -23,8 +23,7 @@ from pennylane.tape.tape import rotations_and_diagonal_measurements
 from pennylane.transforms import transform
 from pennylane.measurements import ExpectationMP, VarianceMP
 
-from qiskit.circuit import QuantumCircuit, ClassicalRegister, QuantumRegister
-from qiskit.circuit import library as lib
+from qiskit.circuit import QuantumCircuit, ClassicalRegister, QuantumRegister, library as lib
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 from qiskit.quantum_info import SparsePauliOp
 from qiskit_scaleway.primitives import Sampler, Estimator

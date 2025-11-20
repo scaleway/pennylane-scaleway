@@ -15,7 +15,7 @@
 import numpy as np
 from dataclasses import replace
 from inspect import signature
-from typing import List, Type
+from typing import Callable, List, Sequence, Tuple, Type
 import warnings
 
 import pennylane as qml
@@ -28,19 +28,32 @@ from pennylane.devices.preprocess import (
     validate_observables,
 )
 from pennylane.tape import QuantumScriptOrBatch, QuantumScript
+from pennylane.transforms import broadcast_expand, split_non_commuting, transform
 from pennylane.transforms.core import TransformProgram
+from pennylane.measurements import Shots
 
 from qiskit.result import Result
 
 from qiskit_scaleway import ScalewayProvider
 from qiskit_scaleway.backends import AqtBackend, AerBackend
 
-from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.aer_device import AerDevice
-from pennylane.transforms import broadcast_expand, split_non_commuting
-
 from pennylane_scaleway.aer_utils import circuit_to_qiskit
+from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.utils import analytic_warning
+
+
+# Define a transformation that will check if the shots set on the tape is less than 2000
+@transform
+def validate_shots(tape: QuantumScript) -> Tuple[Sequence[qml.tape.QuantumTape], Callable]:
+    if tape.shots.total_shots > 2000:
+        warnings.warn(
+            "The number of shots exceeds the limit of 2000 for AQT devices. "
+            "Execution will proceed with the maximum allowed shots of 2000.",
+            UserWarning
+        )
+        tape._shots = Shots(2000)
+    return [tape], lambda x: x
 
 
 @simulator_tracking  # update device.tracker with some relevant information
@@ -134,11 +147,8 @@ class AqtDevice(ScalewayDevice):
     ) -> tuple[TransformProgram, ExecutionConfig]:
 
         if self._aerdevice:
-            print("AER Preprocessing!")
-            return self._aerdevice.preprocess(execution_config)
+            transform_program, config = self._aerdevice.preprocess(execution_config)
         else:
-            print("AQT Preprocessing!")
-
             transform_program = TransformProgram()
             config = execution_config or ExecutionConfig()
             config = replace(config, use_device_gradient=False)
@@ -153,20 +163,23 @@ class AqtDevice(ScalewayDevice):
                 name=self.name,
                 skip_initial_state_prep=False,
             )
-            # transform_program.add_transform(
-            #     validate_measurements,
-            #     sample_measurements=accepted_sample_measurement,
-            #     name=self.name,
-            # )
-            # transform_program.add_transform(
-            #     validate_observables,
-            #     stopping_condition=self._observable_stopping_condition,
-            #     name=self.name,
-            # )
+
+            transform_program.add_transform(
+                validate_measurements,
+                sample_measurements=accepted_sample_measurement,
+                name=self.name,
+            )
+            transform_program.add_transform(
+                validate_observables,
+                stopping_condition=self._observable_stopping_condition,
+                name=self.name,
+            )
+
             transform_program.add_transform(broadcast_expand)
             transform_program.add_transform(split_non_commuting)
 
-            return transform_program, config
+        transform_program.add_transform(validate_shots)
+        return transform_program, config
 
     def execute(
         self,
@@ -174,11 +187,8 @@ class AqtDevice(ScalewayDevice):
         execution_config: ExecutionConfig | None = None,
     ) -> List:
         if self._aerdevice:
-            print("AER Execute!")
             return self._aerdevice.execute(circuits, execution_config)
         else:
-            print("AQT Execute!")
-
             if not self._session_id:
                 self.start()
 
@@ -187,11 +197,11 @@ class AqtDevice(ScalewayDevice):
 
             qiskit_circuits = []
             for circuit in circuits:
-                if circuit.shots and len(circuit.shots.shot_vector) > 1:
-                    raise ValueError(
-                        f"Setting shot vector {circuit.shots.shot_vector} is not supported for {self.name}."
-                        "Please use a single integer instead when specifying the number of shots."
-                    )
+                # if circuit.shots and len(circuit.shots.shot_vector) > 1:
+                #     raise ValueError(
+                #         f"Setting shot vector {circuit.shots.shot_vector} is not supported for {self.name}."
+                #         "Please use a single integer instead when specifying the number of shots."
+                #     )
                 qiskit_circuits.append(circuit_to_qiskit(circuit, self.num_wires))
 
             results = self._platform.run(qiskit_circuits, session_id=self._session_id, **self._run_options).result()
