@@ -13,7 +13,8 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+import numpy as np
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import warnings
 
 from pennylane.devices import Device, ExecutionConfig
@@ -27,7 +28,7 @@ from qiskit_scaleway.backends import BaseBackend
 class ScalewayDevice(Device, ABC):
     """A Base PennyLane device that runs on Scaleway. Used as interface for all platforms."""
 
-    def __init__(self, wires, kwargs, shots=None):
+    def __init__(self, wires: Union[None, int, Iterable[int]], kwargs: Dict[str, Any], shots: Union[None, int, Sequence[int]]=None, seed: Optional[int]=None):
         """
         Params:
 
@@ -47,6 +48,7 @@ class ScalewayDevice(Device, ABC):
 
         super().__init__(wires=wires, shots=shots)
         self.tracker.persistent = True
+        self._rng = np.random.default_rng(seed)
 
         ### Setup Scaleway API and backend
         backend = kwargs.pop("backend", None)

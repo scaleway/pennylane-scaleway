@@ -127,7 +127,7 @@ class AerDevice(ScalewayDevice):
 
         if isinstance(seed, int):
             kwargs.update({"seed_simulator": seed})
-        self._rng = np.random.default_rng(seed)
+        # self._rng = np.random.default_rng(seed)
 
         super().__init__(wires=wires, kwargs=kwargs, shots=shots)
 
@@ -381,7 +381,7 @@ if __name__ == "__main__":
         seed=42,
         max_duration="42m",
         abelian_grouping=True,
-        test="useless",
+        useless="test",
     ) as device:
 
         ### Simple bell state circuit execution
@@ -389,10 +389,10 @@ if __name__ == "__main__":
         def circuit():
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
-            return qml.expval(qml.PauliZ(0))
+            # return qml.expval(qml.PauliZ(0))
+            return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
 
         with device.tracker:
             result = circuit()
 
         print(f"Result: {result}")
-        print(device.tracker.history)

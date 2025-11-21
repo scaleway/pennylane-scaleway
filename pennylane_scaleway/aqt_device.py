@@ -13,9 +13,8 @@
 # limitations under the License.
 
 import numpy as np
-from dataclasses import replace
 from inspect import signature
-from typing import Callable, List, Sequence, Tuple, Type
+from typing import Callable, List, Sequence, Tuple
 import warnings
 
 import pennylane as qml
@@ -34,26 +33,12 @@ from pennylane.measurements import Shots
 
 from qiskit.result import Result
 
-from qiskit_scaleway import ScalewayProvider
-from qiskit_scaleway.backends import AqtBackend, AerBackend
+from qiskit_scaleway.backends import AqtBackend
 
-from pennylane_scaleway.aer_device import AerDevice
-from pennylane_scaleway.aer_utils import circuit_to_qiskit
+from pennylane_scaleway.aer_utils import circuit_to_qiskit, split_execution_types, accepted_sample_measurement
 from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.utils import analytic_warning
 
-
-# Define a transformation that will check if the shots set on the tape is less than 2000
-@transform
-def validate_shots(tape: QuantumScript) -> Tuple[Sequence[qml.tape.QuantumTape], Callable]:
-    if tape.shots.total_shots > 2000:
-        warnings.warn(
-            "The number of shots exceeds the limit of 2000 for AQT devices. "
-            "Execution will proceed with the maximum allowed shots of 2000.",
-            UserWarning
-        )
-        tape._shots = Shots(2000)
-    return [tape], lambda x: x
 
 
 @simulator_tracking  # update device.tracker with some relevant information
@@ -61,54 +46,48 @@ def validate_shots(tape: QuantumScript) -> Tuple[Sequence[qml.tape.QuantumTape],
 class AqtDevice(ScalewayDevice):
 
     name = "scaleway.aqt"
-    backend_types = (AerBackend, AqtBackend)
-    compatible_platforms = ("aqt_ibex_simulation", "aqt_ibex_simulation_local")
-
+    backend_types = (AqtBackend,)
     operations = {
         # native PennyLane operations also native to AQT
-        "RX": "X",
-        "RY": "Y",
-        "RZ": "Z",
-        # operations not natively implemented in AQT
-        "BasisState": None,
-        "PauliX": None,
-        "PauliY": None,
-        "PauliZ": None,
-        "Hadamard": None,
-        "S": None,
-        "CNOT": None,
+        "RX",
+        "RY",
+        "RZ",
         # additional operations not native to PennyLane but present in AQT
-        "R": "R",
-        "MS": "MS",
+        "R",
+        "MS",
+        # operations not natively implemented in AQT
+        "BasisState",
+        "PauliX",
+        "PauliY",
+        "PauliZ",
+        "Hadamard",
+        "S",
+        "CNOT",
         # adjoint versions of operators are also allowed
-        "Adjoint(RX)": None,
-        "Adjoint(RY)": None,
-        "Adjoint(RZ)": None,
-        "Adjoint(PauliX)": None,
-        "Adjoint(PauliY)": None,
-        "Adjoint(PauliZ)": None,
-        "Adjoint(Hadamard)": None,
-        "Adjoint(S)": None,
-        "Adjoint(CNOT)": None,
-        "Adjoint(R)": None,
-        "Adjoint(MS)": None,
+        "Adjoint(RX)",
+        "Adjoint(RY)",
+        "Adjoint(RZ)",
+        "Adjoint(PauliX)",
+        "Adjoint(PauliY)",
+        "Adjoint(PauliZ)",
+        "Adjoint(Hadamard)",
+        "Adjoint(S)",
+        "Adjoint(CNOT)",
+        "Adjoint(R)",
+        "Adjoint(MS)",
+    }
+    observables = {
+        "PauliX",
+        "PauliY",
+        "PauliZ",
+        "Identity",
+        "Hadamard",
     }
 
-    def __init__(self, wires, shots=None, seed=None, **kwargs):
-        device_type = self._check_backend_type(kwargs)
-        if device_type == AerDevice:
-            # Uses an AerDevice to run AQT emulation.
-            self._aerdevice = AerDevice(wires=wires, shots=shots, seed=seed, **kwargs)
-            # Acts as a proxy for the AerDevice's attributes, ugly but does the job without headaches nor overhead.
-            for attr in dir(self._aerdevice):
-                if attr.startswith("_") and not attr.startswith("__"):
-                    setattr(self, attr, getattr(self._aerdevice, attr))
-        else:
-            self._aerdevice = None
+    def __init__(self, shots=None, seed=None, **kwargs):
+        # self._rng = np.random.default_rng(seed)
 
-        self._rng = np.random.default_rng(seed)
-
-        super().__init__(wires=wires, kwargs=kwargs, shots=shots)
+        super().__init__(wires=12, kwargs=kwargs, shots=shots)
         self._handle_kwargs(**kwargs)
 
     def _handle_kwargs(self, **kwargs):
@@ -146,39 +125,36 @@ class AqtDevice(ScalewayDevice):
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
 
-        if self._aerdevice:
-            transform_program, config = self._aerdevice.preprocess(execution_config)
-        else:
-            transform_program = TransformProgram()
-            config = execution_config or ExecutionConfig()
-            config = replace(config, use_device_gradient=False)
+        transform_program = TransformProgram()
+        config = execution_config or ExecutionConfig()
+        # config = replace(config, use_device_gradient=False)
 
-            transform_program.add_transform(analytic_warning)
-            transform_program.add_transform(
-                validate_device_wires, self.wires, name=self.name
-            )
-            transform_program.add_transform(
-                decompose,
-                stopping_condition=lambda x: x.name in self.operations,
-                name=self.name,
-                skip_initial_state_prep=False,
-            )
+        transform_program.add_transform(analytic_warning)
+        # transform_program.add_transform(validate_shots)
+        transform_program.add_transform(
+            validate_device_wires, self.wires, name=self.name
+        )
+        transform_program.add_transform(
+            decompose,
+            stopping_condition=lambda x: x.name in self.operations,
+            name=self.name,
+            skip_initial_state_prep=False,
+        )
 
-            transform_program.add_transform(
-                validate_measurements,
-                sample_measurements=accepted_sample_measurement,
-                name=self.name,
-            )
-            transform_program.add_transform(
-                validate_observables,
-                stopping_condition=self._observable_stopping_condition,
-                name=self.name,
-            )
+        transform_program.add_transform(
+            validate_measurements,
+            sample_measurements=accepted_sample_measurement,
+            name=self.name,
+        )
+        transform_program.add_transform(
+            validate_observables,
+            stopping_condition=lambda x: x.name in self.observables,
+            name=self.name,
+        )
 
-            transform_program.add_transform(broadcast_expand)
-            transform_program.add_transform(split_non_commuting)
+        transform_program.add_transform(broadcast_expand)
+        transform_program.add_transform(split_non_commuting)
 
-        transform_program.add_transform(validate_shots)
         return transform_program, config
 
     def execute(
@@ -186,87 +162,55 @@ class AqtDevice(ScalewayDevice):
         circuits: QuantumScriptOrBatch,
         execution_config: ExecutionConfig | None = None,
     ) -> List:
-        if self._aerdevice:
-            return self._aerdevice.execute(circuits, execution_config)
-        else:
-            if not self._session_id:
-                self.start()
 
-            if isinstance(circuits, QuantumScript):
-                circuits = [circuits]
+        if not self._session_id:
+            self.start()
 
-            qiskit_circuits = []
-            for circuit in circuits:
-                # if circuit.shots and len(circuit.shots.shot_vector) > 1:
-                #     raise ValueError(
-                #         f"Setting shot vector {circuit.shots.shot_vector} is not supported for {self.name}."
-                #         "Please use a single integer instead when specifying the number of shots."
-                #     )
-                qiskit_circuits.append(circuit_to_qiskit(circuit, self.num_wires))
+        if isinstance(circuits, QuantumScript):
+            circuits = [circuits]
 
-            results = self._platform.run(qiskit_circuits, session_id=self._session_id, **self._run_options).result()
-            if isinstance(results, Result):
-                results = [results]
+        qiskit_circuits = []
+        for circuit in circuits:
+            qiskit_circuits.append(circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True))
 
-            all_results = []
-            for original_circuit, qcirc, result in zip(circuits, qiskit_circuits, results):
+        results = self._platform.run(qiskit_circuits, session_id=self._session_id, **self._run_options).result()
+        if isinstance(results, Result):
+            results = [results]
 
-                counts = result.get_counts()
+        all_results = []
+        for original_circuit, qcirc, result in zip(circuits, qiskit_circuits, results):
 
-                # Reconstruct the list of samples from the counts dictionary
-                samples_list = []
-                for key, value in counts.items():
-                    samples_list.extend([key] * value)
+            counts = result.get_counts()
 
-                if not samples_list:
-                    # Handle case with no samples (e.g., 0 shots)
-                    # Create an empty array with the correct number of columns
-                    num_clbits = len(qcirc.clbits)
-                    samples = np.empty((0, num_clbits), dtype=int)
-                else:
-                    # Convert bitstrings to numpy array of ints, reversing for convention
-                    samples = np.vstack(
-                        [np.array([int(i) for i in s[::-1]]) for s in samples_list]
-                    )
+            # Reconstruct the list of samples from the counts dictionary
+            samples_list = []
+            for key, value in counts.items():
+                samples_list.extend([key] * value)
 
-                # Process the samples according to the measurements in the original circuit
-                res = [
-                    mp.process_samples(samples, wire_order=self.wires)
-                    for mp in original_circuit.measurements
-                ]
+            if not samples_list:
+                # Handle case with no samples (e.g., 0 shots)
+                # Create an empty array with the correct number of columns
+                num_clbits = len(qcirc.clbits)
+                samples = np.empty((0, num_clbits), dtype=int)
+            else:
+                # Convert bitstrings to numpy array of ints, reversing for convention
+                samples = np.vstack(
+                    [np.array([int(i) for i in s[::-1]]) for s in samples_list]
+                )
 
-                # Format the final result tuple for this circuit
-                single_measurement = len(original_circuit.measurements) == 1
-                # res_tuple = (res[0],) if single_measurement else tuple(res)
-                res_tuple = res[0] if single_measurement else tuple(res)
-                all_results.append(res_tuple)
+            # Process the samples according to the measurements in the original circuit
+            res = [
+                mp.process_samples(samples, wire_order=self.wires)
+                for mp in original_circuit.measurements
+            ]
 
-            return all_results
+            single_measurement = len(original_circuit.measurements) == 1
+            res_tuple = (res[0],) if single_measurement else tuple(res)
+            # res_tuple = res[0] if single_measurement else tuple(res)
+6           all_results.append(res_tuple)
 
-    def _check_backend_type(self, kwargs) -> Type[ScalewayDevice]:
-        backend = kwargs.get("backend", None)
-        provider = ScalewayProvider(
-            project_id=kwargs.get("project_id", None),
-            secret_key=kwargs.get("secret_key", None),
-            url=kwargs.get("url", None),
-        )
-
-        platforms = [platform for platform in provider.backends() if platform.name in self.compatible_platforms]
-        for platform in platforms:
-            if backend == platform.name:
-                if type(platform) == AerBackend:
-                    return AerDevice
-                elif type(platform) == AqtBackend:
-                    return AqtDevice
-
-        raise ValueError(
-            f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms if (platform.availability == 'available' and type(platform) in self.backend_types)]}."
-        )
-
-    def __getattr__(self, name):
-        if self._aerdevice:
-            return getattr(self._aerdevice, name)
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        # return all_results[0] if len(all_results) == 1 else all_results
+        return all_results
 
 
 if __name__ == "__main__":
@@ -274,7 +218,6 @@ if __name__ == "__main__":
     import os
 
     with AqtDevice(
-        wires=2,
         project_id=os.environ["SCW_PROJECT_ID"],
         secret_key=os.environ["SCW_SECRET_KEY"],
         url=os.getenv("SCW_API_URL"),
@@ -291,7 +234,7 @@ if __name__ == "__main__":
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
             # return qml.expval(qml.PauliZ(0))
-            return qml.probs(wires=[0, 1])#, qml.counts(wires=[0, 1])
+            return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
 
         result = circuit()
         print(result)
