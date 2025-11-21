@@ -192,14 +192,15 @@ def statistical_match(result_a, result_b, circuit, tolerance=0.1):
 
 def main():
 
-    n_wires = 20
+    n_wires = 12
     n_layers = 20
     shots = 4096
-    seed = None  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
+    # seed = None  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
+    seed = 260704049
 
     default_device = qml.device("default.qubit", wires=n_wires)
     scw_device = qml.device(
-        "scaleway.aer",
+        "scaleway.aqt",
         wires=n_wires,
         project_id=SCW_PROJECT_ID,
         secret_key=SCW_SECRET_KEY,

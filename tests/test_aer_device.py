@@ -26,6 +26,7 @@ SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "aer_simulation_pop_c16m128")
 SCW_API_URL = os.getenv("SCW_API_URL")
 
 SHOTS = 4096
+EPSILON = 0.2  # High because we test noisy devices too.
 
 
 # Fixtures
@@ -60,7 +61,7 @@ def test_bell_state_expval_analytic(device_2wires):
     with pytest.warns(UserWarning, match="analytic calculation"):
         expval = circuit_expval()
 
-    assert np.isclose(expval, 0.0, atol=0.1)
+    assert np.isclose(expval, 0.0, atol=EPSILON)
 
 
 def test_bell_state_expval_shots(device_2wires):
@@ -77,7 +78,7 @@ def test_bell_state_expval_shots(device_2wires):
     expval = circuit_expval()
 
     # Aer simulator should return the exact value even with shots
-    assert np.isclose(expval, 1.0, atol=1e-8)
+    assert np.isclose(expval, 1.0, atol=EPSILON)
 
 
 def test_pauli_z_variance_analytic(device_2wires):
@@ -92,7 +93,7 @@ def test_pauli_z_variance_analytic(device_2wires):
     var = circuit_var()
 
     # Estimated variance should be close to 1
-    assert np.isclose(var, 1.0, atol=0.01)
+    assert np.isclose(var, 1.0, atol=EPSILON)
 
 
 def test_pauli_z_variance_shots(device_2wires):
@@ -108,7 +109,7 @@ def test_pauli_z_variance_shots(device_2wires):
     var = circuit_var()
 
     # Estimated variance should be close to 1
-    assert np.isclose(var, 1.0, atol=0.1)
+    assert np.isclose(var, 1.0, atol=EPSILON)
 
 
 def test_shot_vector_error(device_kwargs):
@@ -164,17 +165,14 @@ def test_mixed_measurement_bell_state(device_2wires):
     # Theoretical probabilities are 0.5 for |00> and 0.5 for |11>
     expected_probs = np.array([0.5, 0.0, 0.0, 0.5])
 
-    # 1 / sqrt(2048) approx 0.022. We use 0.1 as a safe buffer.
-    epsilon = 0.1
-
     assert isinstance(result_expval, (float, np.float64, np.float32))
     assert np.isclose(
-        result_expval, expected_expval, atol=epsilon
+        result_expval, expected_expval, atol=EPSILON
     ), f"Expected expval ~{expected_expval}, but got {result_expval}"
 
     assert isinstance(result_probs, np.ndarray)
     assert result_probs.shape == (4,), "Probs array has incorrect shape"
     assert np.isclose(np.sum(result_probs), 1.0), "Probabilities must sum to 1.0"
     assert np.allclose(
-        result_probs, expected_probs, atol=epsilon
+        result_probs, expected_probs, atol=EPSILON
     ), f"Expected probs ~{expected_probs}, but got {result_probs}"

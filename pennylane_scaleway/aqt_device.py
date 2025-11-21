@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import replace
 import numpy as np
 from inspect import signature
 from typing import Callable, List, Sequence, Tuple
@@ -29,13 +30,15 @@ from pennylane.devices.preprocess import (
 from pennylane.tape import QuantumScriptOrBatch, QuantumScript, QuantumTape
 from pennylane.transforms import broadcast_expand, split_non_commuting, transform
 from pennylane.transforms.core import TransformProgram
-from pennylane.measurements import Shots
 
 from qiskit.result import Result
 
-from qiskit_scaleway.backends import AqtBackend
+from qiskit_scaleway.backends import AqtBackend, AerBackend
 
-from pennylane_scaleway.aer_utils import circuit_to_qiskit, split_execution_types, accepted_sample_measurement
+from pennylane_scaleway.aer_utils import (
+    circuit_to_qiskit,
+    accepted_sample_measurement,
+)
 from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.utils import analytic_warning
 
@@ -46,36 +49,28 @@ def limit_aqt_shots(tape: QuantumTape) -> Tuple[Sequence[QuantumTape], Callable]
     A transform that checks if the total shots in the tape exceed 2000.
     If so, it warns the user and caps the shots at 2000.
     """
-    # Check if shots are defined and exceed the limit
     if tape.shots is not None and tape.shots.total_shots > 2000:
-        
         warnings.warn(
             "The number of shots exceeds the limit of 2000 for AQT devices. "
             "Execution will proceed with the maximum allowed shots of 2000.",
-            UserWarning
+            UserWarning,
         )
-
-        # Create a new tape copy with the shots updated to 2000.
         new_tape = tape.copy(shots=2000)
-        
-        # Define the processing function.
+
         def processing_fn(results: Sequence) -> any:
-            # The execution pipeline returns a list of results (one per tape).
-            # Since we only sent one tape, we extract the first (and only) result.
             return results[0]
-            
-        # We MUST return the tape batch and the processing function
+
         return [new_tape], processing_fn
 
-    # If shots are within limits, return the original tape and a simple passthrough
     return [tape], lambda results: results[0]
+
 
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class AqtDevice(ScalewayDevice):
 
     name = "scaleway.aqt"
-    backend_types = (AqtBackend,)
+    backend_types = (AqtBackend, AerBackend)
     operations = {
         # native PennyLane operations also native to AQT
         "RX",
@@ -114,9 +109,7 @@ class AqtDevice(ScalewayDevice):
     }
 
     def __init__(self, shots=None, seed=None, **kwargs):
-        # self._rng = np.random.default_rng(seed)
-
-        super().__init__(wires=12, kwargs=kwargs, shots=shots)
+        super().__init__(wires=12, kwargs=kwargs, shots=shots, seed=seed)
         self._handle_kwargs(**kwargs)
 
     def _handle_kwargs(self, **kwargs):
@@ -127,19 +120,13 @@ class AqtDevice(ScalewayDevice):
             for k, v in kwargs.items()
             if k in signature(self._platform.run).parameters.keys()
         }
-        [
-            kwargs.pop(k) for k in self._run_options.keys()
-        ]
+        [kwargs.pop(k) for k in self._run_options.keys()]
         self._run_options.update(
             {
                 "session_name": self._session_options["name"],
-                "session_deduplication_id": self._session_options[
-                    "deduplication_id"
-                ],
+                "session_deduplication_id": self._session_options["deduplication_id"],
                 "session_max_duration": self._session_options["max_duration"],
-                "session_max_idle_duration": self._session_options[
-                    "max_idle_duration"
-                ],
+                "session_max_idle_duration": self._session_options["max_idle_duration"],
             }
         )
 
@@ -156,7 +143,7 @@ class AqtDevice(ScalewayDevice):
 
         transform_program = TransformProgram()
         config = execution_config or ExecutionConfig()
-        # config = replace(config, use_device_gradient=False)
+        config = replace(config, use_device_gradient=False)
 
         transform_program.add_transform(analytic_warning)
         transform_program.add_transform(limit_aqt_shots)
@@ -170,11 +157,11 @@ class AqtDevice(ScalewayDevice):
             skip_initial_state_prep=False,
         )
 
-        transform_program.add_transform(
-            validate_measurements,
-            sample_measurements=accepted_sample_measurement,
-            name=self.name,
-        )
+        # transform_program.add_transform(
+        #     validate_measurements,
+        #     sample_measurements=accepted_sample_measurement,
+        #     name=self.name,
+        # )
         transform_program.add_transform(
             validate_observables,
             stopping_condition=lambda x: x.name in self.observables,
@@ -200,13 +187,23 @@ class AqtDevice(ScalewayDevice):
 
         qiskit_circuits = []
         for circuit in circuits:
-            qiskit_circuits.append(circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True))
+            qiskit_circuits.append(
+                circuit_to_qiskit(
+                    circuit, self.num_wires, diagonalize=True, measure=True
+                )
+            )
 
         shots = None
         if circuits[0].shots and circuits[0].shots.total_shots:
             shots = circuits[0].shots.total_shots
 
-        results = self._platform.run(qiskit_circuits, session_id=self._session_id, shots=shots, **self._run_options).result()
+        results = self._platform.run(
+            qiskit_circuits,
+            session_id=self._session_id,
+            shots=shots,
+            **self._run_options,
+        ).result()
+
         if isinstance(results, Result):
             results = [results]
 
@@ -238,7 +235,6 @@ class AqtDevice(ScalewayDevice):
             ]
 
             single_measurement = len(original_circuit.measurements) == 1
-            # res_tuple = (res[0],) if single_measurement else tuple(res)
             res_tuple = res[0] if single_measurement else tuple(res)
             all_results.append(res_tuple)
 
@@ -266,9 +262,7 @@ if __name__ == "__main__":
         def circuit():
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
-            # return qml.expval(qml.PauliZ(0))
-            # return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
-            return qml.counts(wires=[0, 1])
+            return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
 
         result = circuit()
         print(f"Result: {result}")

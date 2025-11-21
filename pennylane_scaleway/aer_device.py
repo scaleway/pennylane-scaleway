@@ -390,7 +390,7 @@ if __name__ == "__main__":
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
             # return qml.expval(qml.PauliZ(0))
-            return qml.probs(wires=[0, 1])#, qml.counts(wires=[0, 1])
+            return qml.probs(wires=[0, 1])  # , qml.counts(wires=[0, 1])
 
         result = circuit()
         print(f"Result: {result}")

@@ -28,7 +28,13 @@ from qiskit_scaleway.backends import BaseBackend
 class ScalewayDevice(Device, ABC):
     """A Base PennyLane device that runs on Scaleway. Used as interface for all platforms."""
 
-    def __init__(self, wires: Union[None, int, Iterable[int]], kwargs: Dict[str, Any], shots: Union[None, int, Sequence[int]]=None, seed: Optional[int]=None):
+    def __init__(
+        self,
+        wires: Union[None, int, Iterable[int]],
+        kwargs: Dict[str, Any],
+        shots: Union[None, int, Sequence[int]] = None,
+        seed: Optional[int] = None,
+    ):
         """
         Params:
 
