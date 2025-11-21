@@ -26,7 +26,7 @@ from pennylane.devices.preprocess import (
     validate_measurements,
     validate_observables,
 )
-from pennylane.tape import QuantumScriptOrBatch, QuantumScript
+from pennylane.tape import QuantumScriptOrBatch, QuantumScript, QuantumTape
 from pennylane.transforms import broadcast_expand, split_non_commuting, transform
 from pennylane.transforms.core import TransformProgram
 from pennylane.measurements import Shots
@@ -40,6 +40,35 @@ from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.utils import analytic_warning
 
 
+@transform
+def limit_aqt_shots(tape: QuantumTape) -> Tuple[Sequence[QuantumTape], Callable]:
+    """
+    A transform that checks if the total shots in the tape exceed 2000.
+    If so, it warns the user and caps the shots at 2000.
+    """
+    # Check if shots are defined and exceed the limit
+    if tape.shots is not None and tape.shots.total_shots > 2000:
+        
+        warnings.warn(
+            "The number of shots exceeds the limit of 2000 for AQT devices. "
+            "Execution will proceed with the maximum allowed shots of 2000.",
+            UserWarning
+        )
+
+        # Create a new tape copy with the shots updated to 2000.
+        new_tape = tape.copy(shots=2000)
+        
+        # Define the processing function.
+        def processing_fn(results: Sequence) -> any:
+            # The execution pipeline returns a list of results (one per tape).
+            # Since we only sent one tape, we extract the first (and only) result.
+            return results[0]
+            
+        # We MUST return the tape batch and the processing function
+        return [new_tape], processing_fn
+
+    # If shots are within limits, return the original tape and a simple passthrough
+    return [tape], lambda results: results[0]
 
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
@@ -130,7 +159,7 @@ class AqtDevice(ScalewayDevice):
         # config = replace(config, use_device_gradient=False)
 
         transform_program.add_transform(analytic_warning)
-        # transform_program.add_transform(validate_shots)
+        transform_program.add_transform(limit_aqt_shots)
         transform_program.add_transform(
             validate_device_wires, self.wires, name=self.name
         )
@@ -173,7 +202,11 @@ class AqtDevice(ScalewayDevice):
         for circuit in circuits:
             qiskit_circuits.append(circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True))
 
-        results = self._platform.run(qiskit_circuits, session_id=self._session_id, **self._run_options).result()
+        shots = None
+        if circuits[0].shots and circuits[0].shots.total_shots:
+            shots = circuits[0].shots.total_shots
+
+        results = self._platform.run(qiskit_circuits, session_id=self._session_id, shots=shots, **self._run_options).result()
         if isinstance(results, Result):
             results = [results]
 
@@ -205,11 +238,10 @@ class AqtDevice(ScalewayDevice):
             ]
 
             single_measurement = len(original_circuit.measurements) == 1
-            res_tuple = (res[0],) if single_measurement else tuple(res)
-            # res_tuple = res[0] if single_measurement else tuple(res)
-6           all_results.append(res_tuple)
+            # res_tuple = (res[0],) if single_measurement else tuple(res)
+            res_tuple = res[0] if single_measurement else tuple(res)
+            all_results.append(res_tuple)
 
-        # return all_results[0] if len(all_results) == 1 else all_results
         return all_results
 
 
@@ -229,12 +261,14 @@ if __name__ == "__main__":
     ) as device:
 
         ### Simple bell state circuit execution
+        @qml.set_shots(4000)
         @qml.qnode(device)
         def circuit():
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
             # return qml.expval(qml.PauliZ(0))
-            return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
+            # return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
+            return qml.counts(wires=[0, 1])
 
         result = circuit()
-        print(result)
+        print(f"Result: {result}")
