@@ -16,6 +16,7 @@ from dataclasses import replace, fields
 import numpy as np
 from typing import Iterable, List, Tuple
 import warnings
+from tenacity import retry, stop_after_attempt, stop_after_delay
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
@@ -268,7 +269,11 @@ class AerDevice(ScalewayDevice):
             else None
         )
 
-        results = estimator.run(circ_and_obs, precision=precision).result()
+        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+        def run():
+            return estimator.run(circ_and_obs, precision=precision).result()
+
+        results = run()
 
         processed_results = []
         for i, circuit in enumerate(circuits):
@@ -288,12 +293,18 @@ class AerDevice(ScalewayDevice):
 
         sampler = Sampler(self._platform, self._session_id, self._sampler_options)
 
-        results = sampler.run(
-            qcircs,
-            shots=(
-                circuits[0].shots.total_shots if circuits[0].shots.total_shots else None
-            ),
-        ).result()
+        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+        def run():
+            return sampler.run(
+                qcircs,
+                shots=(
+                    circuits[0].shots.total_shots
+                    if circuits[0].shots.total_shots
+                    else None
+                ),
+            ).result()
+
+        results = run()
 
         all_results = []
         for original_circuit, qcirc, result in zip(circuits, qcircs, results):

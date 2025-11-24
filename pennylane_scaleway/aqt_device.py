@@ -15,8 +15,9 @@
 from dataclasses import replace
 import numpy as np
 from inspect import signature
-from typing import Callable, List, Sequence, Tuple
+from typing import Callable, List, Sequence, Tuple, Union
 import warnings
+from tenacity import retry, stop_after_attempt, stop_after_delay
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
@@ -44,12 +45,20 @@ from pennylane_scaleway.utils import analytic_warning
 
 
 @transform
-def limit_aqt_shots(tape: QuantumTape) -> Tuple[Sequence[QuantumTape], Callable]:
+def limit_aqt_shots(
+    tape: QuantumTape, default_shots=None
+) -> Tuple[Sequence[QuantumTape], Callable]:
     """
     A transform that checks if the total shots in the tape exceed 2000.
     If so, it warns the user and caps the shots at 2000.
     """
-    if tape.shots is not None and tape.shots.total_shots > 2000:
+
+    if tape.shots is None or tape.shots.total_shots is None:
+        if default_shots is None or default_shots < 1:
+            raise ValueError(
+                "No shots provided, either on the tape (recommended, use @qml.set_shots() decorator) or on-device instanciation (not recommended)."
+            )
+    elif tape.shots.total_shots > 2000:
         warnings.warn(
             "The number of shots exceeds the limit of 2000 for AQT devices. "
             "Execution will proceed with the maximum allowed shots of 2000.",
@@ -110,6 +119,11 @@ class AqtDevice(ScalewayDevice):
 
     def __init__(self, shots=None, seed=None, **kwargs):
         super().__init__(wires=12, kwargs=kwargs, shots=shots, seed=seed)
+
+        self._default_shots = None
+        if isinstance(shots, int):
+            self._default_shots = shots
+
         self._handle_kwargs(**kwargs)
 
     def _handle_kwargs(self, **kwargs):
@@ -123,10 +137,14 @@ class AqtDevice(ScalewayDevice):
         [kwargs.pop(k) for k in self._run_options.keys()]
         self._run_options.update(
             {
-                "session_name": self._session_options["name"],
-                "session_deduplication_id": self._session_options["deduplication_id"],
-                "session_max_duration": self._session_options["max_duration"],
-                "session_max_idle_duration": self._session_options["max_idle_duration"],
+                "session_name": self._session_options.get("name"),
+                "session_deduplication_id": self._session_options.get(
+                    "deduplication_id"
+                ),
+                "session_max_duration": self._session_options.get("max_duration"),
+                "session_max_idle_duration": self._session_options.get(
+                    "max_idle_duration"
+                ),
             }
         )
 
@@ -146,7 +164,9 @@ class AqtDevice(ScalewayDevice):
         config = replace(config, use_device_gradient=False)
 
         transform_program.add_transform(analytic_warning)
-        transform_program.add_transform(limit_aqt_shots)
+        transform_program.add_transform(
+            limit_aqt_shots, default_shots=self._default_shots
+        )
         transform_program.add_transform(
             validate_device_wires, self.wires, name=self.name
         )
@@ -156,12 +176,11 @@ class AqtDevice(ScalewayDevice):
             name=self.name,
             skip_initial_state_prep=False,
         )
-
-        # transform_program.add_transform(
-        #     validate_measurements,
-        #     sample_measurements=accepted_sample_measurement,
-        #     name=self.name,
-        # )
+        transform_program.add_transform(
+            validate_measurements,
+            sample_measurements=accepted_sample_measurement,
+            name=self.name,
+        )
         transform_program.add_transform(
             validate_observables,
             stopping_condition=lambda x: x.name in self.observables,
@@ -193,33 +212,40 @@ class AqtDevice(ScalewayDevice):
                 )
             )
 
-        shots = None
+        shots = self._default_shots
         if circuits[0].shots and circuits[0].shots.total_shots:
             shots = circuits[0].shots.total_shots
 
-        results = self._platform.run(
-            qiskit_circuits,
-            session_id=self._session_id,
-            shots=shots,
-            **self._run_options,
-        ).result()
+        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+        def run() -> Union[Result, List[Result]]:
+            return self._platform.run(
+                qiskit_circuits,
+                session_id=self._session_id,
+                shots=shots,
+                **self._run_options,
+            ).result()
 
+        results = run()
         if isinstance(results, Result):
             results = [results]
 
-        all_results = []
-        for original_circuit, qcirc, result in zip(circuits, qiskit_circuits, results):
+        counts = []
+        for result in results:
+            if isinstance(result.get_counts(), dict):
+                counts.append(result.get_counts())
+            else:
+                counts.extend([count for count in result.get_counts()])
 
-            counts = result.get_counts()
+        all_results = []
+        for original_circuit, qcirc, count in zip(circuits, qiskit_circuits, counts):
 
             # Reconstruct the list of samples from the counts dictionary
             samples_list = []
-            for key, value in counts.items():
+            for key, value in count.items():
                 samples_list.extend([key] * value)
 
             if not samples_list:
                 # Handle case with no samples (e.g., 0 shots)
-                # Create an empty array with the correct number of columns
                 num_clbits = len(qcirc.clbits)
                 samples = np.empty((0, num_clbits), dtype=int)
             else:
@@ -257,12 +283,12 @@ if __name__ == "__main__":
     ) as device:
 
         ### Simple bell state circuit execution
-        @qml.set_shots(4000)
+        @qml.set_shots(400)
         @qml.qnode(device)
         def circuit():
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
-            return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
+            return qml.probs(wires=[0, 1]), qml.expval(qml.PauliZ(wires=0))
 
         result = circuit()
         print(f"Result: {result}")

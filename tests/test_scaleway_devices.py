@@ -33,8 +33,7 @@ if SCW_SECRET_KEY in ["fake-token", ""]:
 else:
     TEST_CASES = [
         ("scaleway.aer", "aer_simulation_pop_c16m128"),
-        ("scaleway.aqt", "aqt_ibex_simulation_local"),
-        ("scaleway.aqt", "aqt_ibex_simulation"),
+        ("scaleway.aqt", "aqt_ibex_simulation_pop_c16m128"),
     ]
 
 SHOTS = 4096
@@ -110,6 +109,7 @@ def test_tracker(device_name, backend_name, device_kwargs):
     """Test that the device tracker works correctly."""
     with qml.device(device_name, backend=backend_name, wires=1, **device_kwargs) as dev:
 
+        @qml.set_shots(10)
         @qml.qnode(dev)
         def circuit(x):
             qml.RX(x, wires=0)
