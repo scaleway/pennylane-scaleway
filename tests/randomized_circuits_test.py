@@ -25,7 +25,7 @@ import pennylane as qml
 # Credentials
 SCW_PROJECT_ID = os.environ["SCW_PROJECT_ID"]
 SCW_SECRET_KEY = os.environ["SCW_SECRET_KEY"]
-SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "aer_simulation_pop_c16m128")
+SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "aqt_ibex_simulation_l4")
 SCW_API_URL = os.getenv("SCW_API_URL")
 
 
@@ -192,14 +192,15 @@ def statistical_match(result_a, result_b, circuit, tolerance=0.1):
 
 def main():
 
-    n_wires = 20
-    n_layers = 20
-    shots = 4096
+    n_wires = 12
+    n_layers = 40
+    shots = 2000
     seed = None  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
+    epsilon = 0.2
 
     default_device = qml.device("default.qubit", wires=n_wires)
     scw_device = qml.device(
-        "scaleway.aer",
+        "scaleway.aqt",
         wires=n_wires,
         project_id=SCW_PROJECT_ID,
         secret_key=SCW_SECRET_KEY,
@@ -237,7 +238,7 @@ def main():
             scw_result = scw_circuit()
 
             assert statistical_match(
-                default_result, scw_result, default_circuit
+                default_result, scw_result, default_circuit, tolerance=epsilon
             ), f"ERROR: Results do not match!"
 
             print(f"#{i:03d} - Seed: {seed} - ✓")

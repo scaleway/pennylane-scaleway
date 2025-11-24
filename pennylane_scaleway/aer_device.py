@@ -16,9 +16,11 @@ from dataclasses import replace, fields
 import numpy as np
 from typing import Iterable, List, Tuple
 import warnings
+from tenacity import retry, stop_after_attempt, stop_after_delay
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
+from pennylane.devices.modifiers import simulator_tracking, single_tape_support
 from pennylane.devices.preprocess import (
     decompose,
     validate_device_wires,
@@ -26,7 +28,7 @@ from pennylane.devices.preprocess import (
     validate_observables,
 )
 from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
-from pennylane.tape import QuantumScript, QuantumScriptOrBatch, QuantumTape
+from pennylane.tape import QuantumScript, QuantumScriptOrBatch
 from pennylane.transforms import split_non_commuting, broadcast_expand
 from pennylane.transforms.core import TransformProgram
 
@@ -35,6 +37,7 @@ from qiskit.primitives.backend_estimator_v2 import Options as EstimatorOptions
 from qiskit.primitives.backend_sampler_v2 import Options as SamplerOptions
 
 from qiskit_scaleway.primitives import Estimator, Sampler
+from qiskit_scaleway.backends import AerBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.aer_utils import (
@@ -44,21 +47,11 @@ from pennylane_scaleway.aer_utils import (
     mp_to_pauli,
     split_execution_types,
 )
+from pennylane_scaleway.utils import analytic_warning
 
 
-@qml.transform
-def analytic_warning(tape: QuantumTape):
-    if not tape.shots:
-        warnings.warn(
-            "The analytic calculation of results is not supported on "
-            "this device. All statistics obtained from this device are estimates based "
-            "on samples. A default number of shots will be selected by the Qiskit backend."
-            "(Shots were not set for this circuit).",
-            UserWarning,
-        )
-    return (tape,), lambda results: results[0]
-
-
+@simulator_tracking  # update device.tracker with some relevant information
+@single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class AerDevice(ScalewayDevice):
     """
     This is Scaleway's device to run Pennylane's circuits on Aer emulators.
@@ -73,6 +66,7 @@ class AerDevice(ScalewayDevice):
     """
 
     name = "scaleway.aer"
+    backend_types = (AerBackend,)
 
     operations = set(QISKIT_OPERATION_MAP.keys())
     observables = {
@@ -89,7 +83,7 @@ class AerDevice(ScalewayDevice):
         "SProd",
     }
 
-    def __init__(self, wires=None, shots=None, seed=None, **kwargs):
+    def __init__(self, wires, shots=None, seed=None, **kwargs):
         """
         Params:
 
@@ -132,20 +126,13 @@ class AerDevice(ScalewayDevice):
                 "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
             )
 
-        super().__init__(wires=wires, kwargs=kwargs, shots=shots)
-
         if isinstance(seed, int):
             kwargs.update({"seed_simulator": seed})
-        self._rng = np.random.default_rng(seed)
+        # self._rng = np.random.default_rng(seed)
+
+        super().__init__(wires=wires, kwargs=kwargs, shots=shots)
 
         self._handle_kwargs(**kwargs)
-
-        if self.num_wires > self._platform.num_qubits:
-            warnings.warn(
-                f"Number of wires ({self.num_wires}) exceeds the theoretical limit of qubits in the platform ({self._platform.num_qubits})."
-                "This may lead to unexpected behavior and crash.",
-                UserWarning,
-            )
 
     def _handle_kwargs(self, **kwargs):
 
@@ -282,7 +269,11 @@ class AerDevice(ScalewayDevice):
             else None
         )
 
-        results = estimator.run(circ_and_obs, precision=precision).result()
+        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+        def run():
+            return estimator.run(circ_and_obs, precision=precision).result()
+
+        results = run()
 
         processed_results = []
         for i, circuit in enumerate(circuits):
@@ -302,12 +293,18 @@ class AerDevice(ScalewayDevice):
 
         sampler = Sampler(self._platform, self._session_id, self._sampler_options)
 
-        results = sampler.run(
-            qcircs,
-            shots=(
-                circuits[0].shots.total_shots if circuits[0].shots.total_shots else None
-            ),
-        ).result()
+        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+        def run():
+            return sampler.run(
+                qcircs,
+                shots=(
+                    circuits[0].shots.total_shots
+                    if circuits[0].shots.total_shots
+                    else None
+                ),
+            ).result()
+
+        results = run()
 
         all_results = []
         for original_circuit, qcirc, result in zip(circuits, qcircs, results):
@@ -345,6 +342,7 @@ class AerDevice(ScalewayDevice):
             # Format the final result tuple for this circuit
             single_measurement = len(original_circuit.measurements) == 1
             res_tuple = (res[0],) if single_measurement else tuple(res)
+            # res_tuple = res[0] if single_measurement else tuple(res)
             all_results.append(res_tuple)
 
         return all_results
@@ -394,7 +392,7 @@ if __name__ == "__main__":
         seed=42,
         max_duration="42m",
         abelian_grouping=True,
-        test="useless",
+        useless="test",
     ) as device:
 
         ### Simple bell state circuit execution
@@ -402,7 +400,8 @@ if __name__ == "__main__":
         def circuit():
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
-            return qml.expval(qml.PauliZ(0))
+            # return qml.expval(qml.PauliZ(0))
+            return qml.probs(wires=[0, 1])  # , qml.counts(wires=[0, 1])
 
         result = circuit()
-        print(result)
+        print(f"Result: {result}")

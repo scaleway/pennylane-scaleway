@@ -21,15 +21,18 @@ requirements = open("requirements.txt").readlines()
 requirements = [r.strip() for r in requirements]
 extras_require = {
     "aer": ["qiskit-scaleway"],
+    "aqt": ["qiskit-scaleway"],
+    "all": ["qiskit-scaleway"],
 }
 
 devices_list = [
     "scaleway.aer = pennylane_scaleway:AerDevice",
+    "scaleway.aqt = pennylane_scaleway:AqtDevice",
 ]
 
 setup(
     name="pennylane-scaleway",
-    version="0.1.0",
+    version="0.1.1",
     project_urls={
         "Documentation": "https://www.scaleway.com/en/quantum-as-a-service/",
         "Source": "https://github.com/scaleway/pennylane-scaleway",
