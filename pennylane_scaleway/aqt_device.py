@@ -77,6 +77,15 @@ def limit_aqt_shots(
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class AqtDevice(ScalewayDevice):
+    """
+    This is Scaleway's AQT device.
+    It allows to run quantum circuits on Scaleway's AQT emulation backends.
+
+    This device:
+        * Follows the same constraints as AerDevice, as it uses qiskit as a common interface with AQT emulators.
+        * Has 12 wires available.
+        * Supports up to 2000 shots maximum.
+    """
 
     name = "scaleway.aqt"
     backend_types = (AqtBackend, AerBackend)
@@ -118,6 +127,41 @@ class AqtDevice(ScalewayDevice):
     }
 
     def __init__(self, shots=None, seed=None, **kwargs):
+        """
+        Params:
+
+            shots (int): number of circuit evaluations/random samples used by default. This is override by the circuit's own shots, which is the proper way to declare shots.
+            seed (int): Random seed used to initialize the pseudo-random number generator.
+            **kwargs:
+                - project_id (str): The Scaleway Quantum Project ID.
+                - secret_key (str): The API token for authentication with Scaleway.
+                - backend (str): The specific quantum backend to run on Scaleway.
+                - url (str): The Scaleway API URL (optional).
+                - session_name (str): Name of the session (optional).
+                - deduplication_id (str): Unique deduplication identifier for session (optional).
+                - max_duration (str): Maximum uptime session duration (e.g., "1h", "30m") (optional).
+                - max_idle_duration (str): Maximum idle session duration (e.g., "1h", "5m") (optional).
+                - run_options (dict): Any options supported by qiskit's Backend and Job submission logic (noise_model, memory, etc.) (optional).
+
+        Example:
+            ```python
+            import pennylane as qml
+
+            with qml.device("scaleway.aqt",
+                project_id=<your-project-id>,
+                secret_key=<your-secret-key>,
+                backend="EMU-IBEX-12PQ-L4"
+            ) as dev:
+                @qml.set_shots(512)
+                @qml.qnode(dev)
+                def circuit():
+                    qml.Hadamard(wires=0)
+                    qml.CNOT(wires=[0, 1])
+                    return qml.counts()
+                print(circuit())
+            ```
+        """
+
         super().__init__(wires=12, kwargs=kwargs, shots=shots, seed=seed)
 
         self._default_shots = None
@@ -276,14 +320,10 @@ if __name__ == "__main__":
         secret_key=os.environ["SCW_SECRET_KEY"],
         url=os.getenv("SCW_API_URL"),
         backend=os.getenv("SCW_BACKEND_NAME", "aqt_ibex_simulation_local"),
-        shots=100,
-        seed=42,
-        max_duration="42m",
-        abelian_grouping=True,
     ) as device:
 
         ### Simple bell state circuit execution
-        @qml.set_shots(400)
+        @qml.set_shots(2000)
         @qml.qnode(device)
         def circuit():
             qml.Hadamard(wires=0)

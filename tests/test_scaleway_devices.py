@@ -32,8 +32,8 @@ if SCW_SECRET_KEY in ["fake-token", ""]:
     ]
 else:
     TEST_CASES = [
-        ("scaleway.aer", "aer_simulation_pop_c16m128"),
-        ("scaleway.aqt", "aqt_ibex_simulation_pop_c16m128"),
+        ("scaleway.aer", "EMU-AER-16C-128M"),
+        ("scaleway.aqt", "EMU-IBEX-12PQ-L4"),
     ]
 
 SHOTS = 4096

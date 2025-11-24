@@ -110,13 +110,14 @@ class AerDevice(ScalewayDevice):
                 wires=2,
                 project_id=<your-project-id>,
                 secret_key=<your-secret-key>,
-                backend="aer_simulation_pop_c16m128"
+                backend="EMU-AER-16C-128M"
             ) as dev:
+                @qml.set_shots(512)
                 @qml.qnode(dev)
                 def circuit():
                     qml.Hadamard(wires=0)
                     qml.CNOT(wires=[0, 1])
-                    return qml.sample()
+                    return qml.counts()
                 print(circuit())
             ```
         """
@@ -389,10 +390,6 @@ if __name__ == "__main__":
         url=os.getenv("SCW_API_URL"),
         backend=os.getenv("SCW_BACKEND_NAME", "aer_simulation_local"),
         shots=100,
-        seed=42,
-        max_duration="42m",
-        abelian_grouping=True,
-        useless="test",
     ) as device:
 
         ### Simple bell state circuit execution
@@ -400,8 +397,7 @@ if __name__ == "__main__":
         def circuit():
             qml.Hadamard(wires=0)
             qml.CNOT(wires=[0, 1])
-            # return qml.expval(qml.PauliZ(0))
-            return qml.probs(wires=[0, 1])  # , qml.counts(wires=[0, 1])
+            return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
 
         result = circuit()
         print(f"Result: {result}")
