@@ -89,6 +89,7 @@ class AqtDevice(ScalewayDevice):
 
     name = "scaleway.aqt"
     backend_types = (AqtBackend, AerBackend)
+
     operations = {
         # native PennyLane operations also native to AQT
         "RX",

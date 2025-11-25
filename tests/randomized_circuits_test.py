@@ -195,7 +195,7 @@ def main():
     n_wires = 12
     n_layers = 40
     shots = 2000
-    seed = None  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
+    seed = 587443687  # Setup the seed you want to test, in order to reproduce the same circuit, otherwise leave to None
     epsilon = 0.2
 
     default_device = qml.device("default.qubit", wires=n_wires)

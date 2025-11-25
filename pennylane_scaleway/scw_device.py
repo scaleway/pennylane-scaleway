@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
+import os
 import numpy as np
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import warnings
@@ -60,8 +61,8 @@ class ScalewayDevice(Device, ABC):
         backend = kwargs.pop("backend", None)
 
         self._provider = ScalewayProvider(
-            project_id=kwargs.pop("project_id", None),
-            secret_key=kwargs.pop("secret_key", None),
+            project_id=kwargs.pop("project_id", os.getenv("SCW_PROJECT_ID", None)),
+            secret_key=kwargs.pop("secret_key", os.getenv("SCW_SECRET_KEY", None)),
             url=kwargs.pop("url", None),
         )
 

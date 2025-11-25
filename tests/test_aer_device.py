@@ -22,7 +22,7 @@ from pennylane.exceptions import PennyLaneDeprecationWarning
 # Credentials
 SCW_PROJECT_ID = os.environ["SCW_PROJECT_ID"]
 SCW_SECRET_KEY = os.environ["SCW_SECRET_KEY"]
-SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "EMU-IBEX-12PQ-L4")
+SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "EMU-AER-16C-128M")
 SCW_API_URL = os.getenv("SCW_API_URL")
 
 SHOTS = 4096
