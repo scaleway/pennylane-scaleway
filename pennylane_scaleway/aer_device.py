@@ -14,9 +14,9 @@
 
 from dataclasses import replace, fields
 import numpy as np
-from typing import Iterable, List, Tuple
-import warnings
 from tenacity import retry, stop_after_attempt, stop_after_delay
+from typing import Callable, Iterable, List, Sequence, Tuple
+import warnings
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
@@ -29,12 +29,13 @@ from pennylane.devices.preprocess import (
 )
 from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
 from pennylane.tape import QuantumScript, QuantumScriptOrBatch
-from pennylane.transforms import split_non_commuting, broadcast_expand
+from pennylane.transforms import split_non_commuting, broadcast_expand, transform
 from pennylane.transforms.core import TransformProgram
 
 from qiskit.primitives.containers import PrimitiveResult, PubResult
 from qiskit.primitives.backend_estimator_v2 import Options as EstimatorOptions
 from qiskit.primitives.backend_sampler_v2 import Options as SamplerOptions
+from qiskit.quantum_info import SparsePauliOp
 
 from qiskit_scaleway.primitives import Estimator, Sampler
 from qiskit_scaleway.backends import AerBackend
@@ -175,7 +176,7 @@ class AerDevice(ScalewayDevice):
         )
         transform_program.add_transform(
             decompose,
-            stopping_condition=self._stopping_condition,
+            stopping_condition=lambda op: op.name in self.operations,
             name=self.name,
             skip_initial_state_prep=False,
         )
@@ -186,7 +187,7 @@ class AerDevice(ScalewayDevice):
         )
         transform_program.add_transform(
             validate_observables,
-            stopping_condition=self._observable_stopping_condition,
+            stopping_condition=lambda obs: obs.name in self.observables,
             name=self.name,
         )
         transform_program.add_transform(broadcast_expand)
@@ -343,7 +344,6 @@ class AerDevice(ScalewayDevice):
             # Format the final result tuple for this circuit
             single_measurement = len(original_circuit.measurements) == 1
             res_tuple = (res[0],) if single_measurement else tuple(res)
-            # res_tuple = res[0] if single_measurement else tuple(res)
             all_results.append(res_tuple)
 
         return all_results
@@ -370,13 +370,105 @@ class AerDevice(ScalewayDevice):
 
         return result
 
-    def _stopping_condition(self, op: qml.operation.Operator) -> bool:
-        """Specifies whether or not an Operator is accepted by QiskitDevice2."""
-        return op.name in self.operations
+    def mp_to_pauli(mp, register_size):
+        """Convert a Pauli observable to a SparsePauliOp for measurement via Estimator
 
-    def _observable_stopping_condition(self, obs: qml.operation.Operator) -> bool:
-        """Specifies whether or not an observable is accepted by QiskitDevice2."""
-        return obs.name in self.observables
+        Args:
+            mp(Union[ExpectationMP, VarianceMP]): MeasurementProcess to be converted to a SparsePauliOp
+            register_size(int): total size of the qubit register being measured
+
+        Returns:
+            SparsePauliOp: the ``SparsePauliOp`` of the given Pauli observable
+        """
+        op = mp.obs
+
+        if op.pauli_rep:
+            pauli_strings = [
+                "".join(
+                    [
+                        "I" if i not in pauli_term.wires else pauli_term[i]
+                        for i in range(register_size)
+                    ][
+                        ::-1
+                    ]  ## Qiskit follows opposite wire order convention
+                )
+                for pauli_term in op.pauli_rep.keys()
+            ]
+            coeffs = list(op.pauli_rep.values())
+        else:
+            raise ValueError(
+                f"The operator {op} does not have a representation for SparsePauliOp"
+            )
+
+        return SparsePauliOp(data=pauli_strings, coeffs=coeffs).simplify()
+
+    @transform
+    def split_execution_types(
+        tape: qml.tape.QuantumTape,
+    ) -> tuple[Sequence[qml.tape.QuantumTape], Callable]:
+        """Split into separate tapes based on measurement type. Counts and sample-based measurements
+        will use the Qiskit Sampler. ExpectationValue and Variance will use the Estimator, except
+        when the measured observable does not have a `pauli_rep`. In that case, the Sampler will be
+        used, and the raw samples will be processed to give an expectation value."""
+        estimator = []
+        sampler = []
+
+        for i, mp in enumerate(tape.measurements):
+            if isinstance(mp, (ExpectationMP, VarianceMP)):
+                if mp.obs.pauli_rep:
+                    estimator.append((mp, i))
+                else:
+                    warnings.warn(
+                        f"The observable measured {mp.obs} does not have a `pauli_rep` "
+                        "and will be run without using the Estimator primitive. Instead, "
+                        "raw samples from the Sampler will be used."
+                    )
+                    sampler.append((mp, i))
+            else:
+                sampler.append((mp, i))
+
+        order_indices = [[i for mp, i in group] for group in [estimator, sampler]]
+
+        tapes = []
+        if estimator:
+            tapes.extend(
+                [
+                    qml.tape.QuantumScript(
+                        tape.operations,
+                        measurements=[mp for mp, i in estimator],
+                        shots=tape.shots,
+                    )
+                ]
+            )
+        if sampler:
+            tapes.extend(
+                [
+                    qml.tape.QuantumScript(
+                        tape.operations,
+                        measurements=[mp for mp, i in sampler],
+                        shots=tape.shots,
+                    )
+                ]
+            )
+
+        def reorder_fn(res):
+            """re-order the output to the original shape and order"""
+
+            flattened_indices = [i for group in order_indices for i in group]
+            flattened_results = [r for group in res for r in group]
+
+            if len(flattened_indices) != len(flattened_results):
+                raise ValueError(
+                    "The lengths of flattened_indices and flattened_results do not match."
+                )  # pragma: no cover
+
+            result = dict(zip(flattened_indices, flattened_results))
+
+            result = tuple(result[i] for i in sorted(result.keys()))
+
+            return result[0] if len(result) == 1 else result
+
+        return tapes, reorder_fn
 
 
 if __name__ == "__main__":

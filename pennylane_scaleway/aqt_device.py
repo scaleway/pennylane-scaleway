@@ -85,6 +85,7 @@ class AqtDevice(ScalewayDevice):
         * Follows the same constraints as AerDevice, as it uses qiskit as a common interface with AQT emulators.
         * Has 12 wires available.
         * Supports up to 2000 shots maximum.
+        * Does not support more than 2000 operations AFTER decomposition, due to hardware limitation. This translates to roughly 12 wires and ~20 layers deep for a pennylane circuit.
     """
 
     name = "scaleway.aqt"
