@@ -36,12 +36,12 @@ from qiskit.result import Result
 
 from qiskit_scaleway.backends import AqtBackend, AerBackend
 
-from pennylane_scaleway.aer_utils import (
+from pennylane_scaleway.utils import (
     circuit_to_qiskit,
     accepted_sample_measurement,
+    analytic_warning
 )
 from pennylane_scaleway.scw_device import ScalewayDevice
-from pennylane_scaleway.utils import analytic_warning
 
 
 @transform

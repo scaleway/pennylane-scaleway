@@ -41,7 +41,7 @@ from qiskit_scaleway.primitives import Estimator, Sampler
 from qiskit_scaleway.backends import AerBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
-from pennylane_scaleway.aer_utils import (
+from pennylane_scaleway.utils import (
     QISKIT_OPERATION_MAP,
     accepted_sample_measurement,
     circuit_to_qiskit,
