@@ -28,7 +28,7 @@ if SCW_SECRET_KEY in ["fake-token", ""]:
     TEST_CASES = [
         ("scaleway.aer", "aer_simulation_local"),
         ("scaleway.aqt", "aqt_ibex_simulation_local"),
-        ("scaleway.aqt", "aqt_ibex_simulation"),
+        # ("scaleway.aqt", "aqt_ibex_simulation"),
     ]
 else:
     TEST_CASES = [

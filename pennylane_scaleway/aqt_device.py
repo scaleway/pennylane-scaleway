@@ -39,7 +39,7 @@ from qiskit_scaleway.backends import AqtBackend, AerBackend
 from pennylane_scaleway.utils import (
     circuit_to_qiskit,
     accepted_sample_measurement,
-    analytic_warning
+    analytic_warning,
 )
 from pennylane_scaleway.scw_device import ScalewayDevice
 

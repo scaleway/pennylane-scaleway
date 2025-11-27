@@ -45,8 +45,6 @@ from pennylane_scaleway.utils import (
     QISKIT_OPERATION_MAP,
     accepted_sample_measurement,
     circuit_to_qiskit,
-    mp_to_pauli,
-    split_execution_types,
 )
 from pennylane_scaleway.utils import analytic_warning
 
@@ -257,9 +255,7 @@ class AerDevice(ScalewayDevice):
 
         circ_and_obs = []
         for qcirc, circuit in zip(qcircs, circuits):
-            pauli_observables = [
-                mp_to_pauli(mp, self.num_wires) for mp in circuit.measurements
-            ]
+            pauli_observables = [self.mp_to_pauli(mp) for mp in circuit.measurements]
             compiled_observables = [
                 op.apply_layout(qcirc.layout) for op in pauli_observables
             ]
@@ -370,12 +366,11 @@ class AerDevice(ScalewayDevice):
 
         return result
 
-    def mp_to_pauli(mp, register_size):
+    def mp_to_pauli(self, mp):
         """Convert a Pauli observable to a SparsePauliOp for measurement via Estimator
 
         Args:
             mp(Union[ExpectationMP, VarianceMP]): MeasurementProcess to be converted to a SparsePauliOp
-            register_size(int): total size of the qubit register being measured
 
         Returns:
             SparsePauliOp: the ``SparsePauliOp`` of the given Pauli observable
@@ -387,7 +382,7 @@ class AerDevice(ScalewayDevice):
                 "".join(
                     [
                         "I" if i not in pauli_term.wires else pauli_term[i]
-                        for i in range(register_size)
+                        for i in range(self.num_wires)
                     ][
                         ::-1
                     ]  ## Qiskit follows opposite wire order convention
@@ -402,73 +397,74 @@ class AerDevice(ScalewayDevice):
 
         return SparsePauliOp(data=pauli_strings, coeffs=coeffs).simplify()
 
-    @transform
-    def split_execution_types(
-        tape: qml.tape.QuantumTape,
-    ) -> tuple[Sequence[qml.tape.QuantumTape], Callable]:
-        """Split into separate tapes based on measurement type. Counts and sample-based measurements
-        will use the Qiskit Sampler. ExpectationValue and Variance will use the Estimator, except
-        when the measured observable does not have a `pauli_rep`. In that case, the Sampler will be
-        used, and the raw samples will be processed to give an expectation value."""
-        estimator = []
-        sampler = []
 
-        for i, mp in enumerate(tape.measurements):
-            if isinstance(mp, (ExpectationMP, VarianceMP)):
-                if mp.obs.pauli_rep:
-                    estimator.append((mp, i))
-                else:
-                    warnings.warn(
-                        f"The observable measured {mp.obs} does not have a `pauli_rep` "
-                        "and will be run without using the Estimator primitive. Instead, "
-                        "raw samples from the Sampler will be used."
-                    )
-                    sampler.append((mp, i))
+@transform
+def split_execution_types(
+    tape: qml.tape.QuantumTape,
+) -> tuple[Sequence[qml.tape.QuantumTape], Callable]:
+    """Split into separate tapes based on measurement type. Counts and sample-based measurements
+    will use the Qiskit Sampler. ExpectationValue and Variance will use the Estimator, except
+    when the measured observable does not have a `pauli_rep`. In that case, the Sampler will be
+    used, and the raw samples will be processed to give an expectation value."""
+    estimator = []
+    sampler = []
+
+    for i, mp in enumerate(tape.measurements):
+        if isinstance(mp, (ExpectationMP, VarianceMP)):
+            if mp.obs.pauli_rep:
+                estimator.append((mp, i))
             else:
+                warnings.warn(
+                    f"The observable measured {mp.obs} does not have a `pauli_rep` "
+                    "and will be run without using the Estimator primitive. Instead, "
+                    "raw samples from the Sampler will be used."
+                )
                 sampler.append((mp, i))
+        else:
+            sampler.append((mp, i))
 
-        order_indices = [[i for mp, i in group] for group in [estimator, sampler]]
+    order_indices = [[i for mp, i in group] for group in [estimator, sampler]]
 
-        tapes = []
-        if estimator:
-            tapes.extend(
-                [
-                    qml.tape.QuantumScript(
-                        tape.operations,
-                        measurements=[mp for mp, i in estimator],
-                        shots=tape.shots,
-                    )
-                ]
-            )
-        if sampler:
-            tapes.extend(
-                [
-                    qml.tape.QuantumScript(
-                        tape.operations,
-                        measurements=[mp for mp, i in sampler],
-                        shots=tape.shots,
-                    )
-                ]
-            )
+    tapes = []
+    if estimator:
+        tapes.extend(
+            [
+                qml.tape.QuantumScript(
+                    tape.operations,
+                    measurements=[mp for mp, i in estimator],
+                    shots=tape.shots,
+                )
+            ]
+        )
+    if sampler:
+        tapes.extend(
+            [
+                qml.tape.QuantumScript(
+                    tape.operations,
+                    measurements=[mp for mp, i in sampler],
+                    shots=tape.shots,
+                )
+            ]
+        )
 
-        def reorder_fn(res):
-            """re-order the output to the original shape and order"""
+    def reorder_fn(res):
+        """re-order the output to the original shape and order"""
 
-            flattened_indices = [i for group in order_indices for i in group]
-            flattened_results = [r for group in res for r in group]
+        flattened_indices = [i for group in order_indices for i in group]
+        flattened_results = [r for group in res for r in group]
 
-            if len(flattened_indices) != len(flattened_results):
-                raise ValueError(
-                    "The lengths of flattened_indices and flattened_results do not match."
-                )  # pragma: no cover
+        if len(flattened_indices) != len(flattened_results):
+            raise ValueError(
+                "The lengths of flattened_indices and flattened_results do not match."
+            )  # pragma: no cover
 
-            result = dict(zip(flattened_indices, flattened_results))
+        result = dict(zip(flattened_indices, flattened_results))
 
-            result = tuple(result[i] for i in sorted(result.keys()))
+        result = tuple(result[i] for i in sorted(result.keys()))
 
-            return result[0] if len(result) == 1 else result
+        return result[0] if len(result) == 1 else result
 
-        return tapes, reorder_fn
+    return tapes, reorder_fn
 
 
 if __name__ == "__main__":
