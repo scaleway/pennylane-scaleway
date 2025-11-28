@@ -201,15 +201,8 @@ def analytic_warning(tape: QuantumTape):
         warnings.warn(
             "The analytic calculation of results is not supported on "
             "this device. All statistics obtained from this device are estimates based "
-            "on samples. A default number of shots will be selected by the Qiskit backend."
-            "(Shots were not set for this circuit).",
+            "on samples.\nA default number of shots will be selected by the Qiskit backend. "
+            "User is encouraged to set shots manually for its circuit using the @qml.set_shots() decorator.",
             UserWarning,
         )
     return (tape,), lambda results: results[0]
-
-
-# def update_options(primitive: Union[Estimator, Sampler], options: dict[str, Any]):
-#     for key, value in primitive.options.__dict__.items():
-#         if key in options:
-#             primitive.options[key] = options[key]
-#     return primitive

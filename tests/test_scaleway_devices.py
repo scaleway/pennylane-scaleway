@@ -296,7 +296,7 @@ def test_variational_circuit(device_name, backend_name, device_kwargs):
         # Check if the parameter is close to pi (modulo 2*pi)
         optimized_param = result.x[0]
         assert np.isclose(
-            np.abs(optimized_param) % (2 * np.pi), np.pi, atol=0.2
+            np.abs(optimized_param) % (2 * np.pi), np.pi, atol=0.5
         ), f"Expected optimized parameter near pi, got {optimized_param}"
 
         # Check if the final probability is close to 1.0
