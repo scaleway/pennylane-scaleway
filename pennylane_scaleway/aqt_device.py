@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import numpy as np
+import warnings
 
 from dataclasses import replace
-import numpy as np
 from inspect import signature
 from typing import Callable, List, Sequence, Tuple, Union
-import warnings
 from tenacity import retry, stop_after_attempt, stop_after_delay
 
 import pennylane as qml
@@ -173,7 +173,6 @@ class AqtDevice(ScalewayDevice):
         self._handle_kwargs(**kwargs)
 
     def _handle_kwargs(self, **kwargs):
-
         ### Extract runner-specific arguments
         self._run_options = {
             k: v
@@ -204,7 +203,6 @@ class AqtDevice(ScalewayDevice):
         self,
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
-
         transform_program = TransformProgram()
         config = execution_config or ExecutionConfig()
         config = replace(config, use_device_gradient=False)
@@ -243,7 +241,6 @@ class AqtDevice(ScalewayDevice):
         circuits: QuantumScriptOrBatch,
         execution_config: ExecutionConfig | None = None,
     ) -> List:
-
         if not self._session_id:
             self.start()
 
@@ -284,7 +281,6 @@ class AqtDevice(ScalewayDevice):
 
         all_results = []
         for original_circuit, qcirc, count in zip(circuits, qiskit_circuits, counts):
-
             # Reconstruct the list of samples from the counts dictionary
             samples_list = []
             for key, value in count.items():
@@ -311,26 +307,3 @@ class AqtDevice(ScalewayDevice):
             all_results.append(res_tuple)
 
         return all_results
-
-
-if __name__ == "__main__":
-
-    import os
-
-    with AqtDevice(
-        project_id=os.environ["SCW_PROJECT_ID"],
-        secret_key=os.environ["SCW_SECRET_KEY"],
-        url=os.getenv("SCW_API_URL"),
-        backend=os.getenv("SCW_BACKEND_NAME", "aqt_ibex_simulation_local"),
-    ) as device:
-
-        ### Simple bell state circuit execution
-        @qml.set_shots(2000)
-        @qml.qnode(device)
-        def circuit():
-            qml.Hadamard(wires=0)
-            qml.CNOT(wires=[0, 1])
-            return qml.probs(wires=[0, 1]), qml.expval(qml.PauliZ(wires=0))
-
-        result = circuit()
-        print(f"Result: {result}")

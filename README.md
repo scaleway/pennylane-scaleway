@@ -1,9 +1,9 @@
 
 <table align="center" bgcolor="black">
     <tr>
-        <td bgcolor="black" align="center" width="300"><img src="doc/assets/pennylane-logo-darkmode.png" width="300" alt="Pennylane Logo"></td>
+        <td bgcolor="black" align="center" width="300"><img src="doc/pennylane-logo.png" width="300" alt="Pennylane Logo"></td>
         <td valign="middle" style="font-size: 24px; font-weight: bold; padding: 0 20px;">×</td>
-        <td bgcolor="black" align="center" width="300"><img src="doc/assets/Scaleway-Logo-White.png" width="200" alt="Scaleway Logo"></td>
+        <td bgcolor="black" align="center" width="300"><img src="doc/scaleway-logo.png" width="200" alt="Scaleway Logo"></td>
     </tr>
 </table>
 
@@ -22,7 +22,7 @@ More info on the **[Quantum service web page](https://www.scaleway.com/en/quantu
 ### Prerequisites
 
 Get your `project-id` as well as `secret-key` credentials from your Scaleway account.
-You can find them in the **[Scaleway console](https://console.scaleway.com/)**.
+You can create and find them in the **[Scaleway console](https://console.scaleway.com/)**. Here how to create an [API key](https://www.scaleway.com/en/docs/iam/how-to/create-api-keys/).
 
 For more information about the device you want to use, its pricing and capabilities, you can visit [this page](https://www.scaleway.com/fr/quantum-as-a-service/). Use the `backend` parameter to select the device you want to use (for instance `backend="EMU-IBEX-12PQ-L4"` if you want to try AQT emulation using a L4 GPU).
 
@@ -30,8 +30,8 @@ For more information about the device you want to use, its pricing and capabilit
 
 The following device names are supported:
  - `scaleway.aer` - Aer emulation, offers flexibility, noiseless by default but can handle given Aer's noise models, large choice of backends.
- - `scaleway.aqt` - AQT (Alpine Quantum Technologies), noisy trapped-ions based quantum computer.
- - `scaleway.iqm` - __*Coming soon*__ IQM, superconducting quantum computer.
+ - `scaleway.aqt` - AQT (Alpine Quantum Technologies), noisy trapped-ions based quantum computers.
+ - `scaleway.iqm` - __*Coming soon*__ IQM, superconducting quantum computers.
 
 ### Install the package
 We encourage installing Scaleway provider via pip:
@@ -44,7 +44,7 @@ pip install pennylane-scaleway
 
 To run your pennylane's circuits on Scaleway's quantum backends, simply change your device's name and add your `project_id` and `secret_key` (OR set the environment variables `SCW_PROJECT_ID` and `SCW_SECRET_KEY`):
 ```python
-import pennylane as qml # You're not dreaming, no need to import pennylane-scaleway as long as it is installed in your current environment.
+import pennylane as qml # No need to import pennylane-scaleway as long as it is installed in your current environment.
 
 device = qml.device("scaleway.aer",
         wires=2,
@@ -88,7 +88,7 @@ with qml.device("scaleway.aqt",
 > **Friendly reminder** to avoid writing your credentials directly in your code. Use environment variables instead, load from a .env file or any secret management technique of your choice.
 
 ## Session management
-A session is automatically created when you instantiate a device. You can manage it manually by calling `device.start()` and `device.stop()`, but it is recommended to use the context manager approach instead. You may also attach to an existing session, handle maximum session duration and idle duration by setting these as keyword arguments when instantiating the device. For example:
+A QPU session is automatically created when you instantiate a device. You can manage it manually by calling `device.start()` and `device.stop()`, but it is recommended to use the context manager approach instead. You may also attach to an existing session, handle maximum session duration and idle duration by setting these as keyword arguments when instantiating the device. For example:
 
 ```python
 import pennylane as qml

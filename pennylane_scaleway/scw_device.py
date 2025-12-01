@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from abc import ABC, abstractmethod
 import os
 import numpy as np
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import warnings
+
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from pennylane.devices import Device, ExecutionConfig
 from pennylane.tape import QuantumScriptOrBatch

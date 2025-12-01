@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import numpy as np
+import warnings
 
 from dataclasses import replace, fields
-import numpy as np
 from tenacity import retry, stop_after_attempt, stop_after_delay
 from typing import Callable, Iterable, List, Sequence, Tuple
-import warnings
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
@@ -135,7 +135,6 @@ class AerDevice(ScalewayDevice):
         self._handle_kwargs(**kwargs)
 
     def _handle_kwargs(self, **kwargs):
-
         ### Extract Estimator/Sampler-specific options
         self._sampler_options = {
             k: v
@@ -162,7 +161,6 @@ class AerDevice(ScalewayDevice):
         self,
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
-
         config = execution_config or ExecutionConfig()
         config = replace(config, use_device_gradient=False)
 
@@ -209,6 +207,7 @@ class AerDevice(ScalewayDevice):
         estimator_indices = []
         estimator_circuits = []
         sampler_circuits = []
+
         for i, circuit in enumerate(circuits):
             if circuit.shots and len(circuit.shots.shot_vector) > 1:
                 raise ValueError(
@@ -230,6 +229,7 @@ class AerDevice(ScalewayDevice):
             estimator_results = self._run_estimator(estimator_circuits)
         results = []
         s, e = 0, 0
+
         for i, circuit in enumerate(circuits):
             if i in estimator_indices:
                 results.append(estimator_results[e])
@@ -241,7 +241,6 @@ class AerDevice(ScalewayDevice):
         return results
 
     def _run_estimator(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
-
         qcircs = [
             circuit_to_qiskit(circuit, self.num_wires, diagonalize=False, measure=False)
             for circuit in circuits
@@ -283,7 +282,6 @@ class AerDevice(ScalewayDevice):
         return processed_results
 
     def _run_sampler(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
-
         qcircs = [
             circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
             for circuit in circuits
@@ -305,8 +303,8 @@ class AerDevice(ScalewayDevice):
         results = run()
 
         all_results = []
-        for original_circuit, qcirc, result in zip(circuits, qcircs, results):
 
+        for original_circuit, qcirc, result in zip(circuits, qcircs, results):
             # Extract counts from the classical register
             # Assumes one classical register per circuit, which circuit_to_qiskit sets up
             c = getattr(result.data, qcirc.cregs[0].name)
@@ -348,7 +346,6 @@ class AerDevice(ScalewayDevice):
     def _process_estimator_job(
         measurements: List[MeasurementProcess], job_result: PrimitiveResult[PubResult]
     ):
-
         expvals = job_result.data.evs
         variances = (
             job_result.data.stds / job_result.metadata["target_precision"]
@@ -465,27 +462,3 @@ def split_execution_types(
         return result[0] if len(result) == 1 else result
 
     return tapes, reorder_fn
-
-
-if __name__ == "__main__":
-
-    import os
-
-    with AerDevice(
-        wires=2,
-        project_id=os.environ["SCW_PROJECT_ID"],
-        secret_key=os.environ["SCW_SECRET_KEY"],
-        url=os.getenv("SCW_API_URL"),
-        backend=os.getenv("SCW_BACKEND_NAME", "aer_simulation_local"),
-        shots=100,
-    ) as device:
-
-        ### Simple bell state circuit execution
-        @qml.qnode(device)
-        def circuit():
-            qml.Hadamard(wires=0)
-            qml.CNOT(wires=[0, 1])
-            return qml.probs(wires=[0, 1]), qml.counts(wires=[0, 1])
-
-        result = circuit()
-        print(f"Result: {result}")

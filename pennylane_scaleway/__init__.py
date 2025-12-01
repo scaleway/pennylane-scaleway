@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from .scw_device import ScalewayDevice
 from .aer_device import AerDevice
 from .aqt_device import AqtDevice
