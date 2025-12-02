@@ -26,9 +26,9 @@ SCW_API_URL = os.getenv("SCW_API_URL")
 
 if SCW_SECRET_KEY in ["fake-token", ""]:
     TEST_CASES = [
-        ("scaleway.aer", "aer_simulation_local"),
-        ("scaleway.aqt", "aqt_ibex_simulation_local"),
-        # ("scaleway.aqt", "aqt_ibex_simulation"),
+        ("scaleway.aer", "EMU-AER-LOCAL"),
+        ("scaleway.aqt", "EMU-IBEX-12PQ-LOCAL"),
+        # ("scaleway.aqt", "EMU-IBEX-12PQ"),
     ]
 else:
     TEST_CASES = [
