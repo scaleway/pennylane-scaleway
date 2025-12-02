@@ -1,9 +1,9 @@
 
 <table align="center" bgcolor="black">
     <tr>
-        <td bgcolor="black" align="center" width="300"><img src="doc/pennylane-logo.png" width="300" alt="Pennylane Logo"></td>
+        <td bgcolor="black" align="center" width="300"><img src="assets/pennylane-logo.png" width="300" alt="Pennylane Logo"></td>
         <td valign="middle" style="font-size: 24px; font-weight: bold; padding: 0 20px;">×</td>
-        <td bgcolor="black" align="center" width="300"><img src="doc/scaleway-logo.png" width="200" alt="Scaleway Logo"></td>
+        <td bgcolor="black" align="center" width="300"><img src="assets/scaleway-logo.png" width="200" alt="Scaleway Logo"></td>
     </tr>
 </table>
 
