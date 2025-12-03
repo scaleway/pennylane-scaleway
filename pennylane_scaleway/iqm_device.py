@@ -15,19 +15,17 @@ import numpy as np
 import warnings
 
 from inspect import signature
-from typing import Callable, List, Sequence, Tuple, Union
+from typing import List, Union
 from tenacity import retry, stop_after_attempt, stop_after_delay
 
 from pennylane.devices import ExecutionConfig
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
-
-from pennylane.tape import QuantumScriptOrBatch, QuantumScript, QuantumTape
-from pennylane.transforms import transform
+from pennylane.tape import QuantumScriptOrBatch, QuantumScript
 from pennylane.transforms.core import TransformProgram
 
 from qiskit.result import Result
 
-from qiskit_scaleway.backends import AqtBackend, AerBackend
+from qiskit_scaleway.backends import IqmBackend
 
 from pennylane_scaleway.utils import (
     circuit_to_qiskit,
@@ -35,39 +33,9 @@ from pennylane_scaleway.utils import (
 from pennylane_scaleway.scw_device import ScalewayDevice
 
 
-@transform
-def limit_aqt_shots(
-    tape: QuantumTape, default_shots=None
-) -> Tuple[Sequence[QuantumTape], Callable]:
-    """
-    A transform that checks if the total shots in the tape exceed 2000.
-    If so, it warns the user and caps the shots at 2000.
-    """
-
-    if tape.shots is None or tape.shots.total_shots is None:
-        if default_shots is None or default_shots < 1:
-            raise ValueError(
-                "No shots provided, either on the tape (recommended, use @qml.set_shots() decorator) or on-device instanciation (not recommended)."
-            )
-    elif tape.shots.total_shots > 2000:
-        warnings.warn(
-            "The number of shots exceeds the limit of 2000 for AQT devices. "
-            "Execution will proceed with the maximum allowed shots of 2000.",
-            UserWarning,
-        )
-        new_tape = tape.copy(shots=2000)
-
-        def processing_fn(results: Sequence) -> any:
-            return results[0]
-
-        return [new_tape], processing_fn
-
-    return [tape], lambda results: results[0]
-
-
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
-class AqtDevice(ScalewayDevice):
+class IqmDevice(ScalewayDevice):
     """
     This is Scaleway's AQT device.
     It allows to run quantum circuits on Scaleway's AQT emulation backends.
@@ -79,45 +47,8 @@ class AqtDevice(ScalewayDevice):
         * Does not support more than 2000 operations AFTER decomposition, due to hardware limitation. This translates to roughly 12 wires and ~20 layers deep for a pennylane circuit.
     """
 
-    name = "scaleway.aqt"
-    backend_types = (AqtBackend, AerBackend)
-
-    operations = {
-        # native PennyLane operations also native to AQT
-        "RX",
-        "RY",
-        "RZ",
-        # additional operations not native to PennyLane but present in AQT
-        "R",
-        "MS",
-        # operations not natively implemented in AQT
-        "BasisState",
-        "PauliX",
-        "PauliY",
-        "PauliZ",
-        "Hadamard",
-        "S",
-        "CNOT",
-        # adjoint versions of operators are also allowed
-        "Adjoint(RX)",
-        "Adjoint(RY)",
-        "Adjoint(RZ)",
-        "Adjoint(PauliX)",
-        "Adjoint(PauliY)",
-        "Adjoint(PauliZ)",
-        "Adjoint(Hadamard)",
-        "Adjoint(S)",
-        "Adjoint(CNOT)",
-        "Adjoint(R)",
-        "Adjoint(MS)",
-    }
-    observables = {
-        "PauliX",
-        "PauliY",
-        "PauliZ",
-        "Identity",
-        "Hadamard",
-    }
+    name = "scaleway.iqm"
+    backend_types = (IqmBackend,)
 
     def __init__(self, wires=None, shots=None, seed=None, **kwargs):
         """
@@ -192,9 +123,6 @@ class AqtDevice(ScalewayDevice):
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
         transform_program, config = super().preprocess(execution_config)
-        transform_program.add_transform(
-            limit_aqt_shots, default_shots=self._default_shots
-        )
         return transform_program, config
 
     def execute(

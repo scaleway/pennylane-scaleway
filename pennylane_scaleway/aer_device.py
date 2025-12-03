@@ -14,22 +14,16 @@
 import numpy as np
 import warnings
 
-from dataclasses import replace, fields
+from dataclasses import fields
 from tenacity import retry, stop_after_attempt, stop_after_delay
 from typing import Callable, Iterable, List, Sequence, Tuple
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
-from pennylane.devices.preprocess import (
-    decompose,
-    validate_device_wires,
-    validate_measurements,
-    validate_observables,
-)
 from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
 from pennylane.tape import QuantumScript, QuantumScriptOrBatch
-from pennylane.transforms import split_non_commuting, broadcast_expand, transform
+from pennylane.transforms import transform
 from pennylane.transforms.core import TransformProgram
 
 from qiskit.primitives.containers import PrimitiveResult, PubResult
@@ -43,10 +37,8 @@ from qiskit_scaleway.backends import AerBackend
 from pennylane_scaleway.scw_device import ScalewayDevice
 from pennylane_scaleway.utils import (
     QISKIT_OPERATION_MAP,
-    accepted_sample_measurement,
     circuit_to_qiskit,
 )
-from pennylane_scaleway.utils import analytic_warning
 
 
 @simulator_tracking  # update device.tracker with some relevant information
@@ -161,35 +153,8 @@ class AerDevice(ScalewayDevice):
         self,
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
-        config = execution_config or ExecutionConfig()
-        config = replace(config, use_device_gradient=False)
-
-        transform_program = TransformProgram()
-
-        transform_program.add_transform(analytic_warning)
-        transform_program.add_transform(
-            validate_device_wires, self.wires, name=self.name
-        )
-        transform_program.add_transform(
-            decompose,
-            stopping_condition=lambda op: op.name in self.operations,
-            name=self.name,
-            skip_initial_state_prep=False,
-        )
-        transform_program.add_transform(
-            validate_measurements,
-            sample_measurements=accepted_sample_measurement,
-            name=self.name,
-        )
-        transform_program.add_transform(
-            validate_observables,
-            stopping_condition=lambda obs: obs.name in self.observables,
-            name=self.name,
-        )
-        transform_program.add_transform(broadcast_expand)
-        transform_program.add_transform(split_non_commuting)
+        transform_program, config = super().preprocess(execution_config)
         transform_program.add_transform(split_execution_types)
-
         return transform_program, config
 
     def execute(
@@ -199,7 +164,9 @@ class AerDevice(ScalewayDevice):
     ) -> List:
 
         if not self._session_id:
-            raise RuntimeError("No active session. Please instanciate the device using a context manager, or call start() first. You can also attach to an existing deduplication_id.")
+            raise RuntimeError(
+                "No active session. Please instanciate the device using a context manager, or call start() first. You can also attach to an existing deduplication_id."
+            )
 
         if isinstance(circuits, QuantumScript):
             circuits = [circuits]

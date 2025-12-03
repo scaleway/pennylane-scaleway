@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import replace
 import os
 import numpy as np
 import warnings
@@ -19,8 +20,20 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from pennylane.devices import Device, ExecutionConfig
+from pennylane.devices.preprocess import (
+    decompose,
+    validate_device_wires,
+    validate_measurements,
+    validate_observables,
+)
 from pennylane.tape import QuantumScriptOrBatch
+from pennylane.transforms import split_non_commuting, broadcast_expand
 from pennylane.transforms.core import TransformProgram
+
+from pennylane_scaleway.utils import (
+    accepted_sample_measurement,
+    analytic_warning,
+)
 
 from qiskit_scaleway import ScalewayProvider
 from qiskit_scaleway.backends import BaseBackend
@@ -28,6 +41,9 @@ from qiskit_scaleway.backends import BaseBackend
 
 class ScalewayDevice(Device, ABC):
     """A Base PennyLane device that runs on Scaleway. Used as interface for all platforms."""
+
+    operations = None
+    observables = None
 
     def __init__(
         self,
@@ -80,8 +96,8 @@ class ScalewayDevice(Device, ABC):
 
         if self.num_wires > self._platform.num_qubits:
             warnings.warn(
-                f"Number of wires ({self.num_wires}) exceeds the theoretical limit of qubits in the platform ({self._platform.num_qubits})."
-                "This may lead to unexpected behavior and crash.",
+                f"Number of wires ({self.num_wires}) exceeds the limit of qubits in the platform ({self._platform.num_qubits}). "
+                "This will probably lead to unexpected behavior and crash.",
                 UserWarning,
             )
 
@@ -95,12 +111,39 @@ class ScalewayDevice(Device, ABC):
 
         self._session_id = None
 
-    @abstractmethod
     def preprocess(
         self,
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
-        pass
+        transform_program, config = super().preprocess(execution_config)
+
+        config = replace(config, use_device_gradient=False)
+
+        transform_program.add_transform(analytic_warning)
+        transform_program.add_transform(
+            validate_device_wires, self.wires, name=self.name
+        )
+        transform_program.add_transform(
+            decompose,
+            stopping_condition=self.stop_validating_operations,
+            name=self.name,
+            skip_initial_state_prep=False,
+        )
+        transform_program.add_transform(
+            validate_measurements,
+            sample_measurements=accepted_sample_measurement,
+            name=self.name,
+        )
+        transform_program.add_transform(
+            validate_observables,
+            stopping_condition=self.stop_validating_observables,
+            name=self.name,
+        )
+
+        transform_program.add_transform(broadcast_expand)
+        transform_program.add_transform(split_non_commuting)
+
+        return transform_program, config
 
     @abstractmethod
     def execute(
@@ -119,6 +162,16 @@ class ScalewayDevice(Device, ABC):
     @abstractmethod
     def backend_types(self) -> Tuple[BaseBackend]:
         pass
+
+    def stop_validating_observables(self, obs):
+        if not self.observables:
+            return True
+        return obs.name in self.observables
+
+    def stop_validating_operations(self, op):
+        if not self.operations:
+            return True
+        return op.name in self.operations
 
     def start(self) -> str:
         """
