@@ -7,7 +7,7 @@ install-pennylane-scaleway: install-dependencies
 .PHONY: install-dependencies
 install-dependencies:
 	pip install --upgrade pip
-	pip install -r ../requirements.txt
+	pip install -Ur ../requirements.txt
 
 .PHONY: install-tests-dependencies
 install-tests-dependencies:

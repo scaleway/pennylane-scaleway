@@ -22,8 +22,12 @@ from pennylane.exceptions import PennyLaneDeprecationWarning
 # Credentials
 SCW_PROJECT_ID = os.environ["SCW_PROJECT_ID"]
 SCW_SECRET_KEY = os.environ["SCW_SECRET_KEY"]
-SCW_BACKEND_NAME = os.getenv("SCW_BACKEND_NAME", "EMU-AER-16C-128M")
 SCW_API_URL = os.getenv("SCW_API_URL")
+
+if SCW_SECRET_KEY in ["fake-token", ""]:
+    SCW_BACKEND_NAME = "EMU-AER-LOCAL"
+else:
+    SCW_BACKEND_NAME = "EMU-AER-16C-128M"
 
 SHOTS = 4096
 EPSILON = 0.2  # High because we test noisy devices too.

@@ -171,7 +171,7 @@ def test_bell_state_probs(device_name, backend_name, device_kwargs):
             qml.CNOT(wires=[0, 1])
             return qml.probs(wires=[0, 1])
 
-    probs = circuit_probs()
+        probs = circuit_probs()
 
     # Result should be |00> and |11>
     assert isinstance(probs, np.ndarray)
@@ -305,3 +305,4 @@ def test_variational_circuit(device_name, backend_name, device_kwargs):
         assert np.allclose(
             final_prob_1, 1.0, atol=0.2
         ), f"Expected P(|1>) ~ 1.0, got {final_prob_1}"
+

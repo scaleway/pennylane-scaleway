@@ -126,12 +126,14 @@ class ScalewayDevice(Device, ABC):
         """
         if not self._session_id:
             self._session_id = self._platform.start_session(**self._session_options)
+
         return self._session_id
 
     def stop(self):
         """
         Stops the currently running session on the Scaleway platform. Raises an error if no session is running.
         """
+
         if self._session_id:
             self._platform.stop_session(self._session_id)
             self.tracker.reset()

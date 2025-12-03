@@ -242,7 +242,7 @@ class AqtDevice(ScalewayDevice):
         execution_config: ExecutionConfig | None = None,
     ) -> List:
         if not self._session_id:
-            self.start()
+            raise RuntimeError("No active session. Please instanciate the device using a context manager, or call start() first. You can also attach to an existing deduplication_id.")
 
         if isinstance(circuits, QuantumScript):
             circuits = [circuits]
