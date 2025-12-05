@@ -43,5 +43,4 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     entry_points={"pennylane.plugins": devices_list},
-    extras_require=extras_require,
 )

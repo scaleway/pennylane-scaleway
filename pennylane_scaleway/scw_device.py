@@ -13,6 +13,7 @@
 # limitations under the License.
 from dataclasses import replace
 import os
+import coolname
 import numpy as np
 import warnings
 
@@ -104,7 +105,7 @@ class ScalewayDevice(Device, ABC):
         ### Extract Scaleway's session-specific arguments
         self._session_options = {
             "name": kwargs.pop("session_name", None),
-            "deduplication_id": kwargs.pop("deduplication_id", None),
+            "deduplication_id": kwargs.pop("deduplication_id", coolname.generate_slug(2)),
             "max_duration": kwargs.pop("max_duration", None),
             "max_idle_duration": kwargs.pop("max_idle_duration", None),
         }
@@ -115,9 +116,9 @@ class ScalewayDevice(Device, ABC):
         self,
         execution_config: ExecutionConfig | None = None,
     ) -> tuple[TransformProgram, ExecutionConfig]:
-        transform_program, config = super().preprocess(execution_config)
+        transform_program = TransformProgram()
 
-        config = replace(config, use_device_gradient=False)
+        config = replace(execution_config, use_device_gradient=False)
 
         transform_program.add_transform(analytic_warning)
         transform_program.add_transform(
