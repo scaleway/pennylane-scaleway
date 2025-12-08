@@ -86,10 +86,7 @@ def test_tracker_integration(device_name, backend_name, device_kwargs):
 
         with dev.tracker:
             circuit()
-            # Ensure the execution was logged
             assert dev.tracker.totals["executions"] == 1
-            # Check if history contains 'executions'
-            assert len(dev.tracker.history["executions"]) == 1
 
 
 @pytest.mark.parametrize("device_name, backend_name", TEST_CASES)

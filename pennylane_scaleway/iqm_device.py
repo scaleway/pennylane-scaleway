@@ -15,9 +15,7 @@
 from inspect import signature
 import warnings
 
-from pennylane.devices import ExecutionConfig
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
-from pennylane.transforms.core import TransformProgram
 
 from qiskit_scaleway.backends import IqmBackend
 
@@ -67,10 +65,3 @@ class IqmDevice(ScalewayDevice):
                 f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
                 UserWarning,
             )
-
-    def preprocess(
-        self,
-        execution_config: ExecutionConfig | None = None,
-    ) -> tuple[TransformProgram, ExecutionConfig]:
-        transform_program, config = super().preprocess(execution_config)
-        return transform_program, config

@@ -30,6 +30,9 @@ test-aer: install-tests-dependencies install-pennylane-scaleway print-env
 test-aqt: install-tests-dependencies install-pennylane-scaleway print-env
 	pytest -v -s test_aqt_device.py
 
+.PHONY: test-iqm
+test-iqm: install-tests-dependencies install-pennylane-scaleway print-env
+	pytest -v -s test_iqm_device.py
 
 .PHONY: test-randomized-circuits
 test-randomized-circuits: install-pennylane-scaleway print-env
