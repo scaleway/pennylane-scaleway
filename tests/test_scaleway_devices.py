@@ -84,14 +84,6 @@ def test_invalid_device_manipulation(device_name, backend_name, device_kwargs):
         # max_qubits = device._platform.num_qubits
     device_kwargs_copy.pop("useless_key")
 
-    # with pytest.warns(UserWarning, match="Number of wires "):
-    #     qml.device(
-    #         device_name,
-    #         backend=backend_name,
-    #         wires=max_qubits + 1,
-    #         **device_kwargs_copy,
-    #     )
-
     device = qml.device(
         device_name, backend=backend_name, wires=2, **device_kwargs_copy
     )
