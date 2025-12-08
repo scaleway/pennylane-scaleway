@@ -11,27 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import numpy as np
-import warnings
 
 from inspect import signature
-from typing import Callable, List, Sequence, Tuple, Union
-from tenacity import retry, stop_after_attempt, stop_after_delay
+from typing import Callable, Sequence, Tuple
+import warnings
 
 from pennylane.devices import ExecutionConfig
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
-
-from pennylane.tape import QuantumScriptOrBatch, QuantumScript, QuantumTape
+from pennylane.tape import QuantumTape
 from pennylane.transforms import transform
 from pennylane.transforms.core import TransformProgram
 
-from qiskit.result import Result
-
 from qiskit_scaleway.backends import AqtBackend, AerBackend
 
-from pennylane_scaleway.utils import (
-    circuit_to_qiskit,
-)
 from pennylane_scaleway.scw_device import ScalewayDevice
 
 
@@ -69,14 +61,13 @@ def limit_aqt_shots(
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class AqtDevice(ScalewayDevice):
     """
-    This is Scaleway's AQT device.
-    It allows to run quantum circuits on Scaleway's AQT emulation backends.
+    Scaleway's device to run Pennylane circuits on AQT platforms.
 
     This device:
-        * Follows the same constraints as AerDevice, as it uses qiskit as a common interface with AQT emulators.
-        * Has 12 wires available.
+        * Has 12 qubits available.
         * Supports up to 2000 shots maximum.
-        * Does not support more than 2000 operations AFTER decomposition, due to hardware limitation. This translates to roughly 12 wires and ~20 layers deep for a pennylane circuit.
+        * Does not support more than 2000 operations AFTER decomposition, due to hardware limitation. This translates to roughly 12 qubits and ~20 layers deep for a pennylane circuit.
+        * Follows the same constraints as AerDevice, as it uses qiskit as a common interface with AQT emulators.
     """
 
     name = "scaleway.aqt"
@@ -156,11 +147,6 @@ class AqtDevice(ScalewayDevice):
         """
 
         super().__init__(wires=wires, kwargs=kwargs, shots=shots, seed=seed)
-
-        self._default_shots = None
-        if isinstance(shots, int):
-            self._default_shots = shots
-
         self._handle_kwargs(**kwargs)
 
     def _handle_kwargs(self, **kwargs):
@@ -196,77 +182,3 @@ class AqtDevice(ScalewayDevice):
             limit_aqt_shots, default_shots=self._default_shots
         )
         return transform_program, config
-
-    def execute(
-        self,
-        circuits: QuantumScriptOrBatch,
-        execution_config: ExecutionConfig | None = None,
-    ) -> List:
-        if not self._session_id:
-            raise RuntimeError(
-                "No active session. Please instanciate the device using a context manager, or call start() first. You can also attach to an existing deduplication_id."
-            )
-
-        if isinstance(circuits, QuantumScript):
-            circuits = [circuits]
-
-        qiskit_circuits = []
-        for circuit in circuits:
-            qiskit_circuits.append(
-                circuit_to_qiskit(
-                    circuit, self.num_wires, diagonalize=True, measure=True
-                )
-            )
-
-        shots = self._default_shots
-        if circuits[0].shots and circuits[0].shots.total_shots:
-            shots = circuits[0].shots.total_shots
-
-        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
-        def run() -> Union[Result, List[Result]]:
-            return self._platform.run(
-                qiskit_circuits,
-                session_id=self._session_id,
-                shots=shots,
-                **self._run_options,
-            ).result()
-
-        results = run()
-        if isinstance(results, Result):
-            results = [results]
-
-        counts = []
-        for result in results:
-            if isinstance(result.get_counts(), dict):
-                counts.append(result.get_counts())
-            else:
-                counts.extend([count for count in result.get_counts()])
-
-        all_results = []
-        for original_circuit, qcirc, count in zip(circuits, qiskit_circuits, counts):
-            # Reconstruct the list of samples from the counts dictionary
-            samples_list = []
-            for key, value in count.items():
-                samples_list.extend([key] * value)
-
-            if not samples_list:
-                # Handle case with no samples (e.g., 0 shots)
-                num_clbits = len(qcirc.clbits)
-                samples = np.empty((0, num_clbits), dtype=int)
-            else:
-                # Convert bitstrings to numpy array of ints, reversing for convention
-                samples = np.vstack(
-                    [np.array([int(i) for i in s[::-1]]) for s in samples_list]
-                )
-
-            # Process the samples according to the measurements in the original circuit
-            res = [
-                mp.process_samples(samples, wire_order=self.wires)
-                for mp in original_circuit.measurements
-            ]
-
-            single_measurement = len(original_circuit.measurements) == 1
-            res_tuple = res[0] if single_measurement else tuple(res)
-            all_results.append(res_tuple)
-
-        return all_results

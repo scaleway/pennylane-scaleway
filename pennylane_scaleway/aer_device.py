@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import numpy as np
-import warnings
 
 from dataclasses import fields
+import numpy as np
 from tenacity import retry, stop_after_attempt, stop_after_delay
 from typing import Callable, Iterable, List, Sequence, Tuple
+import warnings
 
 import pennylane as qml
 from pennylane.devices import ExecutionConfig
@@ -45,7 +45,7 @@ from pennylane_scaleway.utils import (
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
 class AerDevice(ScalewayDevice):
     """
-    This is Scaleway's device to run Pennylane's circuits on Aer emulators.
+    Scaleway's device to run Pennylane circuits on Aer emulators.
 
     This device:
         * Supports any operations with explicit PennyLane to Qiskit gate conversions defined in the plugin.
@@ -120,7 +120,6 @@ class AerDevice(ScalewayDevice):
 
         if isinstance(seed, int):
             kwargs.update({"seed_simulator": seed})
-        # self._rng = np.random.default_rng(seed)
 
         super().__init__(wires=wires, kwargs=kwargs, shots=shots)
 

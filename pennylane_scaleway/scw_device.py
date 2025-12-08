@@ -11,14 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import replace
-import os
-import coolname
-import numpy as np
-import warnings
 
 from abc import ABC, abstractmethod
+import coolname
+from dataclasses import replace
+import numpy as np
+import os
+from tenacity import retry, stop_after_attempt, stop_after_delay
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+import warnings
 
 from pennylane.devices import Device, ExecutionConfig
 from pennylane.devices.preprocess import (
@@ -27,14 +28,17 @@ from pennylane.devices.preprocess import (
     validate_measurements,
     validate_observables,
 )
-from pennylane.tape import QuantumScriptOrBatch
+from pennylane.tape import QuantumScriptOrBatch, QuantumScript
 from pennylane.transforms import split_non_commuting, broadcast_expand
 from pennylane.transforms.core import TransformProgram
 
 from pennylane_scaleway.utils import (
     accepted_sample_measurement,
     analytic_warning,
+    circuit_to_qiskit,
 )
+
+from qiskit.result import Result
 
 from qiskit_scaleway import ScalewayProvider
 from qiskit_scaleway.backends import BaseBackend
@@ -71,6 +75,11 @@ class ScalewayDevice(Device, ABC):
         """
 
         super().__init__(wires=wires, shots=shots)
+
+        self._default_shots = None
+        if isinstance(shots, int):
+            self._default_shots = shots
+
         self.tracker.persistent = True
         self._rng = np.random.default_rng(seed)
 
@@ -105,7 +114,9 @@ class ScalewayDevice(Device, ABC):
         ### Extract Scaleway's session-specific arguments
         self._session_options = {
             "name": kwargs.pop("session_name", None),
-            "deduplication_id": kwargs.pop("deduplication_id", coolname.generate_slug(2)),
+            "deduplication_id": kwargs.pop(
+                "deduplication_id", coolname.generate_slug(2)
+            ),
             "max_duration": kwargs.pop("max_duration", None),
             "max_idle_duration": kwargs.pop("max_idle_duration", None),
         }
@@ -146,13 +157,79 @@ class ScalewayDevice(Device, ABC):
 
         return transform_program, config
 
-    @abstractmethod
     def execute(
         self,
         circuits: QuantumScriptOrBatch,
         execution_config: ExecutionConfig | None = None,
     ) -> List:
-        pass
+        if not self._session_id:
+            raise RuntimeError(
+                "No active session. Please instanciate the device using a context manager, or call start() first. You can also attach to an existing deduplication_id."
+            )
+
+        if isinstance(circuits, QuantumScript):
+            circuits = [circuits]
+
+        qiskit_circuits = []
+        for circuit in circuits:
+            qiskit_circuits.append(
+                circuit_to_qiskit(
+                    circuit, self.num_wires, diagonalize=True, measure=True
+                )
+            )
+
+        shots = self._default_shots
+        if circuits[0].shots and circuits[0].shots.total_shots:
+            shots = circuits[0].shots.total_shots
+
+        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+        def run() -> Union[Result, List[Result]]:
+            return self._platform.run(
+                qiskit_circuits,
+                session_id=self._session_id,
+                shots=shots,
+                **self._run_options,
+            ).result()
+
+        results = run()
+        if isinstance(results, Result):
+            results = [results]
+
+        counts = []
+        for result in results:
+            if isinstance(result.get_counts(), dict):
+                counts.append(result.get_counts())
+            else:
+                counts.extend([count for count in result.get_counts()])
+
+        all_results = []
+        for original_circuit, qcirc, count in zip(circuits, qiskit_circuits, counts):
+            # Reconstruct the list of samples from the counts dictionary
+            samples_list = []
+            for key, value in count.items():
+                samples_list.extend([key] * value)
+
+            if not samples_list:
+                # Handle case with no samples (e.g., 0 shots)
+                num_clbits = len(qcirc.clbits)
+                samples = np.empty((0, num_clbits), dtype=int)
+            else:
+                # Convert bitstrings to numpy array of ints, reversing for convention
+                samples = np.vstack(
+                    [np.array([int(i) for i in s[::-1]]) for s in samples_list]
+                )
+
+            # Process the samples according to the measurements in the original circuit
+            res = [
+                mp.process_samples(samples, wire_order=self.wires)
+                for mp in original_circuit.measurements
+            ]
+
+            single_measurement = len(original_circuit.measurements) == 1
+            res_tuple = res[0] if single_measurement else tuple(res)
+            all_results.append(res_tuple)
+
+        return all_results
 
     @property
     @abstractmethod
