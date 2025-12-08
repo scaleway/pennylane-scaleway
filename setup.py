@@ -23,11 +23,12 @@ requirements = [r.strip() for r in requirements]
 devices_list = [
     "scaleway.aer = pennylane_scaleway:AerDevice",
     "scaleway.aqt = pennylane_scaleway:AqtDevice",
+    "scaleway.iqm = pennylane_scaleway:IqmDevice",
 ]
 
 setup(
     name="pennylane-scaleway",
-    version="0.2.6",
+    version="0.2.7",
     project_urls={
         "Documentation": "https://www.scaleway.com/en/quantum-as-a-service/",
         "Source": "https://github.com/scaleway/pennylane-scaleway",
