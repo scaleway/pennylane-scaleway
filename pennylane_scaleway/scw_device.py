@@ -182,6 +182,13 @@ class ScalewayDevice(Device, ABC):
         if circuits[0].shots and circuits[0].shots.total_shots:
             shots = circuits[0].shots.total_shots
 
+        if shots is None:
+            raise ValueError(
+                "Number of shots must be specified, "
+                "either through a default value when instanciating the device, "
+                "or preferably using the set_shots() decorator on the circuit."
+            )
+
         @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
         def run() -> Union[Result, List[Result]]:
             return self._platform.run(

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from dataclasses import fields
+from inspect import signature
 import numpy as np
 from tenacity import retry, stop_after_attempt, stop_after_delay
 from typing import Callable, Iterable, List, Sequence, Tuple
@@ -113,10 +114,13 @@ class AerDevice(ScalewayDevice):
             ```
         """
 
+        self._default_shots = None
         if shots and not isinstance(shots, int):
             raise ValueError(
                 "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
             )
+        elif isinstance(shots, int):
+            self._default_shots = shots
 
         if isinstance(seed, int):
             kwargs.update({"seed_simulator": seed})
@@ -125,22 +129,46 @@ class AerDevice(ScalewayDevice):
 
         self._handle_kwargs(**kwargs)
 
+    # def _handle_kwargs(self, **kwargs):
+    #     ### Extract Estimator/Sampler-specific options
+    #     self._sampler_options = {
+    #         k: v
+    #         for k, v in kwargs.items()
+    #         if k in (field.name for field in fields(SamplerOptions))
+    #     }
+    #     self._estimator_options = {
+    #         k: v
+    #         for k, v in kwargs.items()
+    #         if k in (field.name for field in fields(EstimatorOptions))
+    #     }
+    #     [
+    #         kwargs.pop(k)
+    #         for k in (self._sampler_options.keys() | self._estimator_options.keys())
+    #     ]
+
+    #     if len(kwargs) > 0:
+    #         warnings.warn(
+    #             f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
+    #             UserWarning,
+    #         )
+
     def _handle_kwargs(self, **kwargs):
-        ### Extract Estimator/Sampler-specific options
-        self._sampler_options = {
+        ### Extract runner-specific arguments
+        self._run_options = {
             k: v
             for k, v in kwargs.items()
-            if k in (field.name for field in fields(SamplerOptions))
+            if k in signature(self._platform.run).parameters.keys()
         }
-        self._estimator_options = {
-            k: v
-            for k, v in kwargs.items()
-            if k in (field.name for field in fields(EstimatorOptions))
-        }
-        [
-            kwargs.pop(k)
-            for k in (self._sampler_options.keys() | self._estimator_options.keys())
-        ]
+        [kwargs.pop(k) for k in self._run_options.keys()]
+        self._run_options.update(
+            {
+                "session_name": self._session_options.get("name"),
+                "session_max_duration": self._session_options.get("max_duration"),
+                "session_max_idle_duration": self._session_options.get(
+                    "max_idle_duration"
+                ),
+            }
+        )
 
         if len(kwargs) > 0:
             warnings.warn(
@@ -148,63 +176,63 @@ class AerDevice(ScalewayDevice):
                 UserWarning,
             )
 
-    def preprocess(
-        self,
-        execution_config: ExecutionConfig | None = None,
-    ) -> tuple[TransformProgram, ExecutionConfig]:
-        transform_program, config = super().preprocess(execution_config)
-        transform_program.add_transform(split_execution_types)
-        return transform_program, config
+    # def preprocess(
+    #     self,
+    #     execution_config: ExecutionConfig | None = None,
+    # ) -> tuple[TransformProgram, ExecutionConfig]:
+    #     transform_program, config = super().preprocess(execution_config)
+    #     transform_program.add_transform(split_execution_types)
+    #     return transform_program, config
 
-    def execute(
-        self,
-        circuits: QuantumScriptOrBatch,
-        execution_config: ExecutionConfig | None = None,
-    ) -> List:
+    # def execute(
+    #     self,
+    #     circuits: QuantumScriptOrBatch,
+    #     execution_config: ExecutionConfig | None = None,
+    # ) -> List:
 
-        if not self._session_id:
-            raise RuntimeError(
-                "No active session. Please instanciate the device using a context manager, or call start() first. You can also attach to an existing deduplication_id."
-            )
+    #     if not self._session_id:
+    #         raise RuntimeError(
+    #             "No active session. Please instanciate the device using a context manager, or call start() first. You can also attach to an existing deduplication_id."
+    #         )
 
-        if isinstance(circuits, QuantumScript):
-            circuits = [circuits]
+    #     if isinstance(circuits, QuantumScript):
+    #         circuits = [circuits]
 
-        estimator_indices = []
-        estimator_circuits = []
-        sampler_circuits = []
+    #     estimator_indices = []
+    #     estimator_circuits = []
+    #     sampler_circuits = []
 
-        for i, circuit in enumerate(circuits):
-            if circuit.shots and len(circuit.shots.shot_vector) > 1:
-                raise ValueError(
-                    f"Setting shot vector {circuit.shots.shot_vector} is not supported for {self.name}."
-                    "Please use a single integer instead when specifying the number of shots."
-                )
+    #     for i, circuit in enumerate(circuits):
+    #         if circuit.shots and len(circuit.shots.shot_vector) > 1:
+    #             raise ValueError(
+    #                 f"Setting shot vector {circuit.shots.shot_vector} is not supported for {self.name}."
+    #                 "Please use a single integer instead when specifying the number of shots."
+    #             )
 
-            if isinstance(
-                circuit.measurements[0], (ExpectationMP, VarianceMP)
-            ) and getattr(circuit.measurements[0].obs, "pauli_rep", None):
-                estimator_indices.append(i)
-                estimator_circuits.append(circuit)
-            else:
-                sampler_circuits.append(circuit)
+    #         if isinstance(
+    #             circuit.measurements[0], (ExpectationMP, VarianceMP)
+    #         ) and getattr(circuit.measurements[0].obs, "pauli_rep", None):
+    #             estimator_indices.append(i)
+    #             estimator_circuits.append(circuit)
+    #         else:
+    #             sampler_circuits.append(circuit)
 
-        if sampler_circuits:
-            sampler_results = self._run_sampler(sampler_circuits)
-        if estimator_circuits:
-            estimator_results = self._run_estimator(estimator_circuits)
-        results = []
-        s, e = 0, 0
+    #     if sampler_circuits:
+    #         sampler_results = self._run_sampler(sampler_circuits)
+    #     if estimator_circuits:
+    #         estimator_results = self._run_estimator(estimator_circuits)
+    #     results = []
+    #     s, e = 0, 0
 
-        for i, circuit in enumerate(circuits):
-            if i in estimator_indices:
-                results.append(estimator_results[e])
-                e += 1
-            else:
-                results.append(sampler_results[s])
-                s += 1
+    #     for i, circuit in enumerate(circuits):
+    #         if i in estimator_indices:
+    #             results.append(estimator_results[e])
+    #             e += 1
+    #         else:
+    #             results.append(sampler_results[s])
+    #             s += 1
 
-        return results
+    #     return results
 
     def _run_estimator(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
         qcircs = [
