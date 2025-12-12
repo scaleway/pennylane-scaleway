@@ -13,7 +13,7 @@
 **Pennylane-Scaleway** is a Python package to run pennylane's QML circuits on **[Scaleway](https://www.scaleway.com/)** infrastructure, providing access to:
 - [Aer](https://github.com/Qiskit/qiskit-aer) state vector and tensor network multi-GPU emulators
 - [AQT](https://www.aqt.eu/) trapped-ions quantum computers
-- *Coming Soon!* - [IQM](https://meetiqm.com/) superconducting quantum computers
+- [IQM](https://meetiqm.com/) superconducting quantum computers
 
 More info on the **[Quantum service web page](https://www.scaleway.com/en/quantum-as-a-service/)**.
 
