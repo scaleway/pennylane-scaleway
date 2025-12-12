@@ -12,34 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import fields
-from inspect import signature
-import numpy as np
-from tenacity import retry, stop_after_attempt, stop_after_delay
-from typing import Callable, Iterable, List, Sequence, Tuple
-import warnings
-
-import pennylane as qml
-from pennylane.devices import ExecutionConfig
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
-from pennylane.measurements import ExpectationMP, VarianceMP, MeasurementProcess
-from pennylane.tape import QuantumScript, QuantumScriptOrBatch
-from pennylane.transforms import transform
-from pennylane.transforms.core import TransformProgram
 
-from qiskit.primitives.containers import PrimitiveResult, PubResult
-from qiskit.primitives.backend_estimator_v2 import Options as EstimatorOptions
-from qiskit.primitives.backend_sampler_v2 import Options as SamplerOptions
-from qiskit.quantum_info import SparsePauliOp
-
-from qiskit_scaleway.primitives import Estimator, Sampler
 from qiskit_scaleway.backends import AerBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
-from pennylane_scaleway.utils import (
-    QISKIT_OPERATION_MAP,
-    circuit_to_qiskit,
-)
 
 
 @simulator_tracking  # update device.tracker with some relevant information
@@ -60,20 +37,20 @@ class AerDevice(ScalewayDevice):
     name = "scaleway.aer"
     backend_types = (AerBackend,)
 
-    operations = set(QISKIT_OPERATION_MAP.keys())
-    observables = {
-        "PauliX",
-        "PauliY",
-        "PauliZ",
-        "Identity",
-        "Hadamard",
-        "Hermitian",
-        "Projector",
-        "Prod",
-        "Sum",
-        "LinearCombination",
-        "SProd",
-    }
+    # operations = set(QISKIT_OPERATION_MAP.keys())
+    # observables = {
+    #     "PauliX",
+    #     "PauliY",
+    #     "PauliZ",
+    #     "Identity",
+    #     "Hadamard",
+    #     "Hermitian",
+    #     "Projector",
+    #     "Prod",
+    #     "Sum",
+    #     "LinearCombination",
+    #     "SProd",
+    # }
 
     def __init__(self, wires, shots=None, seed=None, **kwargs):
         """
@@ -114,20 +91,12 @@ class AerDevice(ScalewayDevice):
             ```
         """
 
-        self._default_shots = None
-        if shots and not isinstance(shots, int):
-            raise ValueError(
-                "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
-            )
-        elif isinstance(shots, int):
-            self._default_shots = shots
-
-        if isinstance(seed, int):
-            kwargs.update({"seed_simulator": seed})
+        # if isinstance(seed, int):
+        #     kwargs.update({"seed_simulator": seed})
 
         super().__init__(wires=wires, kwargs=kwargs, shots=shots)
 
-        self._handle_kwargs(**kwargs)
+        # self._handle_kwargs(**kwargs)
 
     # def _handle_kwargs(self, **kwargs):
     #     ### Extract Estimator/Sampler-specific options
@@ -152,29 +121,29 @@ class AerDevice(ScalewayDevice):
     #             UserWarning,
     #         )
 
-    def _handle_kwargs(self, **kwargs):
-        ### Extract runner-specific arguments
-        self._run_options = {
-            k: v
-            for k, v in kwargs.items()
-            if k in signature(self._platform.run).parameters.keys()
-        }
-        [kwargs.pop(k) for k in self._run_options.keys()]
-        self._run_options.update(
-            {
-                "session_name": self._session_options.get("name"),
-                "session_max_duration": self._session_options.get("max_duration"),
-                "session_max_idle_duration": self._session_options.get(
-                    "max_idle_duration"
-                ),
-            }
-        )
+    # def _handle_kwargs(self, **kwargs):
+    #     ### Extract runner-specific arguments
+    #     self._run_options = {
+    #         k: v
+    #         for k, v in kwargs.items()
+    #         if k in signature(self._platform.run).parameters.keys()
+    #     }
+    #     [kwargs.pop(k) for k in self._run_options.keys()]
+    #     self._run_options.update(
+    #         {
+    #             "session_name": self._session_options.get("name"),
+    #             "session_max_duration": self._session_options.get("max_duration"),
+    #             "session_max_idle_duration": self._session_options.get(
+    #                 "max_idle_duration"
+    #             ),
+    #         }
+    #     )
 
-        if len(kwargs) > 0:
-            warnings.warn(
-                f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
-                UserWarning,
-            )
+    #     if len(kwargs) > 0:
+    #         warnings.warn(
+    #             f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
+    #             UserWarning,
+    #         )
 
     # def preprocess(
     #     self,
@@ -234,225 +203,225 @@ class AerDevice(ScalewayDevice):
 
     #     return results
 
-    def _run_estimator(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
-        qcircs = [
-            circuit_to_qiskit(circuit, self.num_wires, diagonalize=False, measure=False)
-            for circuit in circuits
-        ]
+    # def _run_estimator(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
+    #     qcircs = [
+    #         circuit_to_qiskit(circuit, self.num_wires, diagonalize=False, measure=False)
+    #         for circuit in circuits
+    #     ]
 
-        estimator = Estimator(
-            backend=self._platform,
-            session_id=self._session_id,
-            options=self._estimator_options,
-        )
+    #     estimator = Estimator(
+    #         backend=self._platform,
+    #         session_id=self._session_id,
+    #         options=self._estimator_options,
+    #     )
 
-        circ_and_obs = []
-        for qcirc, circuit in zip(qcircs, circuits):
-            pauli_observables = [self.mp_to_pauli(mp) for mp in circuit.measurements]
-            compiled_observables = [
-                op.apply_layout(qcirc.layout) for op in pauli_observables
-            ]
-            circ_and_obs.append((qcirc, compiled_observables))
+    #     circ_and_obs = []
+    #     for qcirc, circuit in zip(qcircs, circuits):
+    #         pauli_observables = [self.mp_to_pauli(mp) for mp in circuit.measurements]
+    #         compiled_observables = [
+    #             op.apply_layout(qcirc.layout) for op in pauli_observables
+    #         ]
+    #         circ_and_obs.append((qcirc, compiled_observables))
 
-        precision = (
-            np.sqrt(1 / circuits[0].shots.total_shots)
-            if circuits[0].shots.total_shots
-            else None
-        )
+    #     precision = (
+    #         np.sqrt(1 / circuits[0].shots.total_shots)
+    #         if circuits[0].shots.total_shots
+    #         else None
+    #     )
 
-        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
-        def run():
-            return estimator.run(circ_and_obs, precision=precision).result()
+    #     @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+    #     def run():
+    #         return estimator.run(circ_and_obs, precision=precision).result()
 
-        results = run()
+    #     results = run()
 
-        processed_results = []
-        for i, circuit in enumerate(circuits):
-            processed_result = self._process_estimator_job(
-                circuit.measurements, results[i]
-            )
-            processed_results.append(processed_result)
+    #     processed_results = []
+    #     for i, circuit in enumerate(circuits):
+    #         processed_result = self._process_estimator_job(
+    #             circuit.measurements, results[i]
+    #         )
+    #         processed_results.append(processed_result)
 
-        return processed_results
+    #     return processed_results
 
-    def _run_sampler(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
-        qcircs = [
-            circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
-            for circuit in circuits
-        ]
+    # def _run_sampler(self, circuits: Iterable[QuantumScript]) -> List[Tuple]:
+    #     qcircs = [
+    #         circuit_to_qiskit(circuit, self.num_wires, diagonalize=True, measure=True)
+    #         for circuit in circuits
+    #     ]
 
-        sampler = Sampler(self._platform, self._session_id, self._sampler_options)
+    #     sampler = Sampler(self._platform, self._session_id, self._sampler_options)
 
-        @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
-        def run():
-            return sampler.run(
-                qcircs,
-                shots=(
-                    circuits[0].shots.total_shots
-                    if circuits[0].shots.total_shots
-                    else None
-                ),
-            ).result()
+    #     @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)
+    #     def run():
+    #         return sampler.run(
+    #             qcircs,
+    #             shots=(
+    #                 circuits[0].shots.total_shots
+    #                 if circuits[0].shots.total_shots
+    #                 else None
+    #             ),
+    #         ).result()
 
-        results = run()
+    #     results = run()
 
-        all_results = []
+    #     all_results = []
 
-        for original_circuit, qcirc, result in zip(circuits, qcircs, results):
-            # Extract counts from the classical register
-            # Assumes one classical register per circuit, which circuit_to_qiskit sets up
-            c = getattr(result.data, qcirc.cregs[0].name)
-            counts = c.get_counts()
-            if not isinstance(counts, dict):
-                # Handle cases where get_counts() might return a list
-                counts = c.get_counts()[0]
+    #     for original_circuit, qcirc, result in zip(circuits, qcircs, results):
+    #         # Extract counts from the classical register
+    #         # Assumes one classical register per circuit, which circuit_to_qiskit sets up
+    #         c = getattr(result.data, qcirc.cregs[0].name)
+    #         counts = c.get_counts()
+    #         if not isinstance(counts, dict):
+    #             # Handle cases where get_counts() might return a list
+    #             counts = c.get_counts()[0]
 
-            # Reconstruct the list of samples from the counts dictionary
-            samples_list = []
-            for key, value in counts.items():
-                samples_list.extend([key] * value)
+    #         # Reconstruct the list of samples from the counts dictionary
+    #         samples_list = []
+    #         for key, value in counts.items():
+    #             samples_list.extend([key] * value)
 
-            if not samples_list:
-                # Handle case with no samples (e.g., 0 shots)
-                # Create an empty array with the correct number of columns
-                num_clbits = len(qcirc.clbits)
-                samples = np.empty((0, num_clbits), dtype=int)
-            else:
-                # Convert bitstrings to numpy array of ints, reversing for convention
-                samples = np.vstack(
-                    [np.array([int(i) for i in s[::-1]]) for s in samples_list]
-                )
+    #         if not samples_list:
+    #             # Handle case with no samples (e.g., 0 shots)
+    #             # Create an empty array with the correct number of columns
+    #             num_clbits = len(qcirc.clbits)
+    #             samples = np.empty((0, num_clbits), dtype=int)
+    #         else:
+    #             # Convert bitstrings to numpy array of ints, reversing for convention
+    #             samples = np.vstack(
+    #                 [np.array([int(i) for i in s[::-1]]) for s in samples_list]
+    #             )
 
-            # Process the samples according to the measurements in the original circuit
-            res = [
-                mp.process_samples(samples, wire_order=self.wires)
-                for mp in original_circuit.measurements
-            ]
+    #         # Process the samples according to the measurements in the original circuit
+    #         res = [
+    #             mp.process_samples(samples, wire_order=self.wires)
+    #             for mp in original_circuit.measurements
+    #         ]
 
-            # Format the final result tuple for this circuit
-            single_measurement = len(original_circuit.measurements) == 1
-            res_tuple = (res[0],) if single_measurement else tuple(res)
-            all_results.append(res_tuple)
+    #         # Format the final result tuple for this circuit
+    #         single_measurement = len(original_circuit.measurements) == 1
+    #         res_tuple = (res[0],) if single_measurement else tuple(res)
+    #         all_results.append(res_tuple)
 
-        return all_results
+    #     return all_results
 
-    @staticmethod
-    def _process_estimator_job(
-        measurements: List[MeasurementProcess], job_result: PrimitiveResult[PubResult]
-    ):
-        expvals = job_result.data.evs
-        variances = (
-            job_result.data.stds / job_result.metadata["target_precision"]
-        ) ** 2
+    # @staticmethod
+    # def _process_estimator_job(
+    #     measurements: List[MeasurementProcess], job_result: PrimitiveResult[PubResult]
+    # ):
+    #     expvals = job_result.data.evs
+    #     variances = (
+    #         job_result.data.stds / job_result.metadata["target_precision"]
+    #     ) ** 2
 
-        result = []
-        for i, mp in enumerate(measurements):
-            if isinstance(mp, ExpectationMP):
-                result.append(expvals[i])
-            elif isinstance(mp, VarianceMP):
-                result.append(variances[i])
+    #     result = []
+    #     for i, mp in enumerate(measurements):
+    #         if isinstance(mp, ExpectationMP):
+    #             result.append(expvals[i])
+    #         elif isinstance(mp, VarianceMP):
+    #             result.append(variances[i])
 
-        single_measurement = len(measurements) == 1
-        result = (result[0],) if single_measurement else tuple(result)
+    #     single_measurement = len(measurements) == 1
+    #     result = (result[0],) if single_measurement else tuple(result)
 
-        return result
+    #     return result
 
-    def mp_to_pauli(self, mp):
-        """Convert a Pauli observable to a SparsePauliOp for measurement via Estimator
+    # def mp_to_pauli(self, mp):
+    #     """Convert a Pauli observable to a SparsePauliOp for measurement via Estimator
 
-        Args:
-            mp(Union[ExpectationMP, VarianceMP]): MeasurementProcess to be converted to a SparsePauliOp
+    #     Args:
+    #         mp(Union[ExpectationMP, VarianceMP]): MeasurementProcess to be converted to a SparsePauliOp
 
-        Returns:
-            SparsePauliOp: the ``SparsePauliOp`` of the given Pauli observable
-        """
-        op = mp.obs
+    #     Returns:
+    #         SparsePauliOp: the ``SparsePauliOp`` of the given Pauli observable
+    #     """
+    #     op = mp.obs
 
-        if op.pauli_rep:
-            pauli_strings = [
-                "".join(
-                    [
-                        "I" if i not in pauli_term.wires else pauli_term[i]
-                        for i in range(self.num_wires)
-                    ][
-                        ::-1
-                    ]  ## Qiskit follows opposite wire order convention
-                )
-                for pauli_term in op.pauli_rep.keys()
-            ]
-            coeffs = list(op.pauli_rep.values())
-        else:
-            raise ValueError(
-                f"The operator {op} does not have a representation for SparsePauliOp"
-            )
+    #     if op.pauli_rep:
+    #         pauli_strings = [
+    #             "".join(
+    #                 [
+    #                     "I" if i not in pauli_term.wires else pauli_term[i]
+    #                     for i in range(self.num_wires)
+    #                 ][
+    #                     ::-1
+    #                 ]  ## Qiskit follows opposite wire order convention
+    #             )
+    #             for pauli_term in op.pauli_rep.keys()
+    #         ]
+    #         coeffs = list(op.pauli_rep.values())
+    #     else:
+    #         raise ValueError(
+    #             f"The operator {op} does not have a representation for SparsePauliOp"
+    #         )
 
-        return SparsePauliOp(data=pauli_strings, coeffs=coeffs).simplify()
+    #     return SparsePauliOp(data=pauli_strings, coeffs=coeffs).simplify()
 
 
-@transform
-def split_execution_types(
-    tape: qml.tape.QuantumTape,
-) -> tuple[Sequence[qml.tape.QuantumTape], Callable]:
-    """Split into separate tapes based on measurement type. Counts and sample-based measurements
-    will use the Qiskit Sampler. ExpectationValue and Variance will use the Estimator, except
-    when the measured observable does not have a `pauli_rep`. In that case, the Sampler will be
-    used, and the raw samples will be processed to give an expectation value."""
-    estimator = []
-    sampler = []
+# @transform
+# def split_execution_types(
+#     tape: qml.tape.QuantumTape,
+# ) -> tuple[Sequence[qml.tape.QuantumTape], Callable]:
+#     """Split into separate tapes based on measurement type. Counts and sample-based measurements
+#     will use the Qiskit Sampler. ExpectationValue and Variance will use the Estimator, except
+#     when the measured observable does not have a `pauli_rep`. In that case, the Sampler will be
+#     used, and the raw samples will be processed to give an expectation value."""
+#     estimator = []
+#     sampler = []
 
-    for i, mp in enumerate(tape.measurements):
-        if isinstance(mp, (ExpectationMP, VarianceMP)):
-            if mp.obs.pauli_rep:
-                estimator.append((mp, i))
-            else:
-                warnings.warn(
-                    f"The observable measured {mp.obs} does not have a `pauli_rep` "
-                    "and will be run without using the Estimator primitive. Instead, "
-                    "raw samples from the Sampler will be used."
-                )
-                sampler.append((mp, i))
-        else:
-            sampler.append((mp, i))
+#     for i, mp in enumerate(tape.measurements):
+#         if isinstance(mp, (ExpectationMP, VarianceMP)):
+#             if mp.obs.pauli_rep:
+#                 estimator.append((mp, i))
+#             else:
+#                 warnings.warn(
+#                     f"The observable measured {mp.obs} does not have a `pauli_rep` "
+#                     "and will be run without using the Estimator primitive. Instead, "
+#                     "raw samples from the Sampler will be used."
+#                 )
+#                 sampler.append((mp, i))
+#         else:
+#             sampler.append((mp, i))
 
-    order_indices = [[i for mp, i in group] for group in [estimator, sampler]]
+#     order_indices = [[i for mp, i in group] for group in [estimator, sampler]]
 
-    tapes = []
-    if estimator:
-        tapes.extend(
-            [
-                qml.tape.QuantumScript(
-                    tape.operations,
-                    measurements=[mp for mp, i in estimator],
-                    shots=tape.shots,
-                )
-            ]
-        )
-    if sampler:
-        tapes.extend(
-            [
-                qml.tape.QuantumScript(
-                    tape.operations,
-                    measurements=[mp for mp, i in sampler],
-                    shots=tape.shots,
-                )
-            ]
-        )
+#     tapes = []
+#     if estimator:
+#         tapes.extend(
+#             [
+#                 qml.tape.QuantumScript(
+#                     tape.operations,
+#                     measurements=[mp for mp, i in estimator],
+#                     shots=tape.shots,
+#                 )
+#             ]
+#         )
+#     if sampler:
+#         tapes.extend(
+#             [
+#                 qml.tape.QuantumScript(
+#                     tape.operations,
+#                     measurements=[mp for mp, i in sampler],
+#                     shots=tape.shots,
+#                 )
+#             ]
+#         )
 
-    def reorder_fn(res):
-        """re-order the output to the original shape and order"""
+#     def reorder_fn(res):
+#         """re-order the output to the original shape and order"""
 
-        flattened_indices = [i for group in order_indices for i in group]
-        flattened_results = [r for group in res for r in group]
+#         flattened_indices = [i for group in order_indices for i in group]
+#         flattened_results = [r for group in res for r in group]
 
-        if len(flattened_indices) != len(flattened_results):
-            raise ValueError(
-                "The lengths of flattened_indices and flattened_results do not match."
-            )  # pragma: no cover
+#         if len(flattened_indices) != len(flattened_results):
+#             raise ValueError(
+#                 "The lengths of flattened_indices and flattened_results do not match."
+#             )  # pragma: no cover
 
-        result = dict(zip(flattened_indices, flattened_results))
+#         result = dict(zip(flattened_indices, flattened_results))
 
-        result = tuple(result[i] for i in sorted(result.keys()))
+#         result = tuple(result[i] for i in sorted(result.keys()))
 
-        return result[0] if len(result) == 1 else result
+#         return result[0] if len(result) == 1 else result
 
-    return tapes, reorder_fn
+#     return tapes, reorder_fn

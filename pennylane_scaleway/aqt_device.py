@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from inspect import signature
 from typing import Callable, Sequence, Tuple
 import warnings
 
@@ -68,42 +67,42 @@ class AqtDevice(ScalewayDevice):
     name = "scaleway.aqt"
     backend_types = (AqtBackend, AerBackend)
 
-    operations = {
-        # native PennyLane operations also native to AQT
-        "RX",
-        "RY",
-        "RZ",
-        # additional operations not native to PennyLane but present in AQT
-        "R",
-        "MS",
-        # operations not natively implemented in AQT
-        "BasisState",
-        "PauliX",
-        "PauliY",
-        "PauliZ",
-        "Hadamard",
-        "S",
-        "CNOT",
-        # adjoint versions of operators are also allowed
-        "Adjoint(RX)",
-        "Adjoint(RY)",
-        "Adjoint(RZ)",
-        "Adjoint(PauliX)",
-        "Adjoint(PauliY)",
-        "Adjoint(PauliZ)",
-        "Adjoint(Hadamard)",
-        "Adjoint(S)",
-        "Adjoint(CNOT)",
-        "Adjoint(R)",
-        "Adjoint(MS)",
-    }
-    observables = {
-        "PauliX",
-        "PauliY",
-        "PauliZ",
-        "Identity",
-        "Hadamard",
-    }
+    # operations = {
+    #     # native PennyLane operations also native to AQT
+    #     "RX",
+    #     "RY",
+    #     "RZ",
+    #     # additional operations not native to PennyLane but present in AQT
+    #     "R",
+    #     "MS",
+    #     # operations not natively implemented in AQT
+    #     "BasisState",
+    #     "PauliX",
+    #     "PauliY",
+    #     "PauliZ",
+    #     "Hadamard",
+    #     "S",
+    #     "CNOT",
+    #     # adjoint versions of operators are also allowed
+    #     "Adjoint(RX)",
+    #     "Adjoint(RY)",
+    #     "Adjoint(RZ)",
+    #     "Adjoint(PauliX)",
+    #     "Adjoint(PauliY)",
+    #     "Adjoint(PauliZ)",
+    #     "Adjoint(Hadamard)",
+    #     "Adjoint(S)",
+    #     "Adjoint(CNOT)",
+    #     "Adjoint(R)",
+    #     "Adjoint(MS)",
+    # }
+    # observables = {
+    #     "PauliX",
+    #     "PauliY",
+    #     "PauliZ",
+    #     "Identity",
+    #     "Hadamard",
+    # }
 
     def __init__(self, wires=None, shots=None, seed=None, **kwargs):
         """
@@ -142,31 +141,6 @@ class AqtDevice(ScalewayDevice):
         """
 
         super().__init__(wires=wires, kwargs=kwargs, shots=shots, seed=seed)
-        self._handle_kwargs(**kwargs)
-
-    def _handle_kwargs(self, **kwargs):
-        ### Extract runner-specific arguments
-        self._run_options = {
-            k: v
-            for k, v in kwargs.items()
-            if k in signature(self._platform.run).parameters.keys()
-        }
-        [kwargs.pop(k) for k in self._run_options.keys()]
-        self._run_options.update(
-            {
-                "session_name": self._session_options.get("name"),
-                "session_max_duration": self._session_options.get("max_duration"),
-                "session_max_idle_duration": self._session_options.get(
-                    "max_idle_duration"
-                ),
-            }
-        )
-
-        if len(kwargs) > 0:
-            warnings.warn(
-                f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
-                UserWarning,
-            )
 
     def preprocess(
         self,

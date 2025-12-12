@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
+from inspect import signature
 import coolname
 from dataclasses import replace
 import numpy as np
@@ -77,7 +78,11 @@ class ScalewayDevice(Device, ABC):
         super().__init__(wires=wires, shots=shots)
 
         self._default_shots = None
-        if isinstance(shots, int):
+        if shots and not isinstance(shots, int):
+            raise ValueError(
+                "Only integer number of shots is supported on this device (vectors are not supported either). The set 'shots' value will be ignored."
+            )
+        elif isinstance(shots, int):
             self._default_shots = shots
 
         self.tracker.persistent = True
@@ -120,6 +125,28 @@ class ScalewayDevice(Device, ABC):
             "max_duration": kwargs.pop("max_duration", None),
             "max_idle_duration": kwargs.pop("max_idle_duration", None),
         }
+
+        self._run_options = {
+            k: v
+            for k, v in kwargs.items()
+            if k in signature(self._platform.run).parameters.keys()
+        }
+        [kwargs.pop(k) for k in self._run_options.keys()]
+        self._run_options.update(
+            {
+                "session_name": self._session_options.get("name"),
+                "session_max_duration": self._session_options.get("max_duration"),
+                "session_max_idle_duration": self._session_options.get(
+                    "max_idle_duration"
+                ),
+            }
+        )
+
+        if len(kwargs) > 0:
+            warnings.warn(
+                f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
+                UserWarning,
+            )
 
         self._session_id = None
 
