@@ -28,7 +28,7 @@ devices_list = [
 
 setup(
     name="pennylane-scaleway",
-    version="0.2.8",
+    version="0.3.0",
     project_urls={
         "Documentation": "https://www.scaleway.com/en/quantum-as-a-service/",
         "Source": "https://github.com/scaleway/pennylane-scaleway",
