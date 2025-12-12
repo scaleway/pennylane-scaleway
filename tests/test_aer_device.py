@@ -30,7 +30,7 @@ else:
     SCW_BACKEND_NAME = "EMU-AER-16C-128M"
 
 SHOTS = 4096
-EPSILON = 0.2  # High because we test noisy devices too.
+EPSILON = 0.2  # High because of noise
 
 
 # Fixtures
@@ -55,6 +55,7 @@ def device_2wires(device_kwargs):
 def test_bell_state_expval_analytic(device_2wires):
     """Tests expval() with shots=None (analytic)."""
 
+    @qml.set_shots(SHOTS)
     @qml.qnode(device_2wires)
     def circuit_expval():
         qml.Hadamard(wires=0)
@@ -88,6 +89,7 @@ def test_bell_state_expval_shots(device_2wires):
 def test_pauli_z_variance_analytic(device_2wires):
     """Tests var() with shots=None (analytic)."""
 
+    @qml.set_shots(SHOTS)
     @qml.qnode(device_2wires)
     def circuit_var():
         qml.Hadamard(wires=0)  # State is |+>

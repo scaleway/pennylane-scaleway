@@ -36,12 +36,7 @@ def limit_aqt_shots(
     If so, it warns the user and caps the shots at 2000.
     """
 
-    if tape.shots is None or tape.shots.total_shots is None:
-        if default_shots is None or default_shots < 1:
-            raise ValueError(
-                "No shots provided, either on the tape (recommended, use @qml.set_shots() decorator) or on-device instanciation (not recommended)."
-            )
-    elif tape.shots.total_shots > 2000:
+    if tape.shots and tape.shots.total_shots and tape.shots.total_shots > 2000:
         warnings.warn(
             "The number of shots exceeds the limit of 2000 for AQT devices. "
             "Execution will proceed with the maximum allowed shots of 2000.",

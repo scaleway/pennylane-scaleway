@@ -186,7 +186,9 @@ class ScalewayDevice(Device, ABC):
             raise ValueError(
                 "Number of shots must be specified, "
                 "either through a default value when instanciating the device, "
-                "or preferably using the set_shots() decorator on the circuit."
+                "or preferably using the set_shots() decorator on the circuit. "
+                "If you run an analytic measurement, you still need to set a shots value. "
+                "Setting higher shots will result in better precision."
             )
 
         @retry(stop=stop_after_attempt(3) | stop_after_delay(3 * 60), reraise=True)

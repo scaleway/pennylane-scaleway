@@ -28,12 +28,13 @@ if SCW_SECRET_KEY in ["fake-token", ""]:
     TEST_CASES = [
         ("scaleway.aer", "EMU-AER-LOCAL"),
         ("scaleway.aqt", "EMU-IBEX-12PQ-LOCAL"),
-        # ("scaleway.aqt", "EMU-IBEX-12PQ"),
+        # ("scaleway.iqm", "EMU-SIRIUS-24PQ-LOCAL")
     ]
 else:
     TEST_CASES = [
         ("scaleway.aer", "EMU-AER-16C-128M"),
         ("scaleway.aqt", "EMU-IBEX-12PQ-L4"),
+        # ("scaleway.iqm", "EMU-SIRIUS-24PQ-2L4")
     ]
 
 SHOTS = 4096
@@ -56,7 +57,7 @@ def test_device_instantiation(device_name, backend_name, device_kwargs):
 
     with qml.device(device_name, wires=2, backend=backend_name, **device_kwargs) as dev:
         assert dev.name == device_name
-        # assert dev.num_wires == 2
+        assert dev.num_wires == 2
         assert dev._session_id is not None
         assert dev._platform.name == backend_name
 
@@ -81,8 +82,16 @@ def test_invalid_device_manipulation(device_name, backend_name, device_kwargs):
         device = qml.device(
             device_name, backend=backend_name, wires=2, **device_kwargs_copy
         )
-        # max_qubits = device._platform.num_qubits
+        max_qubits = device._platform.num_qubits
     device_kwargs_copy.pop("useless_key")
+
+    with pytest.warns(UserWarning, match="Number of wires "):
+        qml.device(
+            device_name,
+            backend=backend_name,
+            wires=max_qubits + 1,
+            **device_kwargs_copy,
+        )
 
     device = qml.device(
         device_name, backend=backend_name, wires=2, **device_kwargs_copy
@@ -94,6 +103,18 @@ def test_invalid_device_manipulation(device_name, backend_name, device_kwargs):
         qml.device(
             device_name, backend="invalid_backend", wires=2, **device_kwargs_copy
         )
+
+    with pytest.raises(ValueError, match="Number of shots must be specified, "):
+        with qml.device(
+            device_name, backend=backend_name, wires=1, **device_kwargs
+        ) as dev:
+
+            @qml.qnode(dev)
+            def circuit():
+                qml.Hadamard(wires=0)
+                return qml.expval(qml.PauliZ(wires=0))
+
+            circuit()
 
 
 @pytest.mark.parametrize("device_name, backend_name", TEST_CASES)
