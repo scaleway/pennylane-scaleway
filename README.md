@@ -31,7 +31,7 @@ For more information about the device you want to use, its pricing and capabilit
 The following device names are supported:
  - `scaleway.aer` - Aer emulation, offers flexibility, noiseless by default but can handle given Aer's noise models, large choice of backends.
  - `scaleway.aqt` - AQT (Alpine Quantum Technologies), noisy trapped-ions based quantum computers.
- - `scaleway.iqm` - __*Coming soon*__ IQM, superconducting quantum computers.
+ - `scaleway.iqm` - IQM, superconducting quantum computers.
 
 ### Install the package
 We encourage installing Scaleway provider via pip:
