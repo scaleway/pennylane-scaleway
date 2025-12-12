@@ -19,20 +19,16 @@ description = "A Pennylane-compatible package to run pennylane circuits on Scale
 long_description = io.open("README.md", encoding="utf-8").read()
 requirements = open("requirements.txt").readlines()
 requirements = [r.strip() for r in requirements]
-extras_require = {
-    "aer": ["qiskit-scaleway"],
-    "aqt": ["qiskit-scaleway"],
-    "all": ["qiskit-scaleway"],
-}
 
 devices_list = [
     "scaleway.aer = pennylane_scaleway:AerDevice",
     "scaleway.aqt = pennylane_scaleway:AqtDevice",
+    "scaleway.iqm = pennylane_scaleway:IqmDevice",
 ]
 
 setup(
     name="pennylane-scaleway",
-    version="0.2.5",
+    version="0.3.0",
     project_urls={
         "Documentation": "https://www.scaleway.com/en/quantum-as-a-service/",
         "Source": "https://github.com/scaleway/pennylane-scaleway",
@@ -48,5 +44,4 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     entry_points={"pennylane.plugins": devices_list},
-    extras_require=extras_require,
 )

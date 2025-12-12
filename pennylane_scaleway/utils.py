@@ -18,6 +18,7 @@ import numpy as np
 import warnings
 
 import pennylane as qml
+from pennylane.measurements import ExpectationMP, VarianceMP
 from pennylane.tape.tape import rotations_and_diagonal_measurements, QuantumTape
 
 from qiskit.circuit import (
@@ -197,7 +198,9 @@ def _operation_to_qiskit(operation, reg, creg=None):
 
 @qml.transform
 def analytic_warning(tape: QuantumTape):
-    if not tape.shots:
+    if isinstance(tape.measurements[0], (ExpectationMP, VarianceMP)) and getattr(
+        tape.measurements[0].obs, "pauli_rep", None
+    ):
         warnings.warn(
             "The analytic calculation of results is not supported on "
             "this device. All statistics obtained from this device are estimates based "

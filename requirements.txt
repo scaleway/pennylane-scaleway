@@ -1,3 +1,4 @@
 coolname
 pennylane
 tenacity
+qiskit-scaleway

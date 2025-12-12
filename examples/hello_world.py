@@ -14,6 +14,7 @@ with qml.device(
     secret_key=secret_key,
     backend=backend,
 ) as dev:
+
     @qml.set_shots(100)
     @qml.qnode(dev)
     def bell_state_circuit():
