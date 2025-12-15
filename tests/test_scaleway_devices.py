@@ -75,15 +75,12 @@ def test_invalid_device_manipulation(device_name, backend_name, device_kwargs):
 
     device_kwargs_copy = device_kwargs.copy()
 
-    device_kwargs_copy["useless_key"] = "useless_value"
-    with pytest.warns(
-        UserWarning, match="The following keyword arguments are not supported by "
-    ):
-        device = qml.device(
-            device_name, backend=backend_name, wires=2, **device_kwargs_copy
-        )
-        max_qubits = device._platform.num_qubits
-    device_kwargs_copy.pop("useless_key")
+    device = qml.device(
+        device_name, backend=backend_name, wires=2, **device_kwargs_copy
+    )
+    max_qubits = device._platform.num_qubits
+    with pytest.raises(RuntimeError, match="No session running."):
+        device.stop()
 
     with pytest.warns(UserWarning, match="Number of wires "):
         qml.device(
@@ -92,12 +89,6 @@ def test_invalid_device_manipulation(device_name, backend_name, device_kwargs):
             wires=max_qubits + 1,
             **device_kwargs_copy,
         )
-
-    device = qml.device(
-        device_name, backend=backend_name, wires=2, **device_kwargs_copy
-    )
-    with pytest.raises(RuntimeError, match="No session running."):
-        device.stop()
 
     with pytest.raises(ValueError, match="Platform "):
         qml.device(

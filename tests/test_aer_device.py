@@ -182,3 +182,45 @@ def test_mixed_measurement_bell_state(device_2wires):
     assert np.allclose(
         result_probs, expected_probs, atol=EPSILON
     ), f"Expected probs ~{expected_probs}, but got {result_probs}"
+
+
+def _get_noise_model():
+    import qiskit_aer.noise as noise
+
+    # Error probabilities (exaggerated to get a noticeable effect for demonstration)
+    prob_1 = 0.05  # 1-qubit gate
+    prob_2 = 0.1  # 2-qubit gate
+
+    # Depolarizing quantum errors
+    error_1 = noise.depolarizing_error(prob_1, 1)
+    error_2 = noise.depolarizing_error(prob_2, 2)
+
+    # Add errors to noise model
+    noise_model = noise.NoiseModel()
+    noise_model.add_all_qubit_quantum_error(error_1, ["rz", "sx", "x", "h"])
+    noise_model.add_all_qubit_quantum_error(error_2, ["cx"])
+
+    return noise_model
+
+
+def test_noise_model(device_kwargs):
+    """Test that the noise model is correctly applied."""
+
+    noise_model = _get_noise_model()
+
+    with qml.device(
+        "scaleway.aer", wires=2, noise_model=noise_model, **device_kwargs
+    ) as dev:
+
+        @qml.set_shots(1000)
+        @qml.qnode(dev)
+        def circuit():
+            qml.Hadamard(wires=0)
+            qml.CNOT(wires=[0, 1])
+            return qml.probs(wires=[0, 1])
+
+        result_probs = circuit()
+
+    # Check that noise induces presence of other unwanted states
+    assert result_probs[1] > 0.0
+    assert result_probs[2] > 0.0

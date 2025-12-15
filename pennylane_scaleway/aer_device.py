@@ -26,6 +26,7 @@ class AerDevice(ScalewayDevice):
     Scaleway's device to run Pennylane circuits on Aer emulators.
 
     This device:
+        * Is an emulation-only backend.
         * Supports any operations with explicit PennyLane to Qiskit gate conversions defined in the plugin.
         * Supports both CPU and GPU Aer backends.
         * Approximates analytic calculations by sampling.
@@ -35,7 +36,7 @@ class AerDevice(ScalewayDevice):
     """
 
     name = "scaleway.aer"
-    backend_types = (AerBackend,)
+    backend_type = AerBackend
 
     # operations = set(QISKIT_OPERATION_MAP.keys())
     # observables = {

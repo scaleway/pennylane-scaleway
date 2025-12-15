@@ -21,7 +21,7 @@ from pennylane.tape import QuantumTape
 from pennylane.transforms import transform
 from pennylane.transforms.core import TransformProgram
 
-from qiskit_scaleway.backends import AqtBackend, AerBackend
+from qiskit_scaleway.backends import AqtBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
 
@@ -58,14 +58,14 @@ class AqtDevice(ScalewayDevice):
     Scaleway's device to run Pennylane circuits on AQT platforms.
 
     This device:
+        * Is based on trapped ions qubits.
         * Has 12 qubits available.
         * Supports up to 2000 shots maximum.
-        * Does not support more than 2000 operations AFTER decomposition, due to hardware limitation. This translates to roughly 12 qubits and ~20 layers deep for a pennylane circuit.
-        * Follows the same constraints as AerDevice, as it uses qiskit as a common interface with AQT emulators.
+        * Does not support more than 2000 operations AFTER decomposition, due to hardware limitation. This translates to roughly 12 wires and ~20 layers deep for a pennylane circuit.
     """
 
     name = "scaleway.aqt"
-    backend_types = (AqtBackend, AerBackend)
+    backend_type = AqtBackend
 
     # operations = {
     #     # native PennyLane operations also native to AQT

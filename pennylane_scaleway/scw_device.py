@@ -19,7 +19,7 @@ from dataclasses import replace
 import numpy as np
 import os
 from tenacity import retry, stop_after_attempt, stop_after_delay
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 import warnings
 
 from pennylane.devices import Device, ExecutionConfig
@@ -100,7 +100,7 @@ class ScalewayDevice(Device, ABC):
         platforms = self._provider.backends()
         if backend not in [platform.name for platform in platforms]:
             raise ValueError(
-                f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms if (platform.availability == 'available' and type(platform) in self.backend_types)]}."
+                f"Platform '{backend}' not found. Available platforms are {[platform.name for platform in platforms if (platform.availability == 'available' and type(platform) == self.backend_type)]}."
             )
 
         self._platform = self._provider.get_backend(backend)
@@ -126,12 +126,9 @@ class ScalewayDevice(Device, ABC):
             "max_idle_duration": kwargs.pop("max_idle_duration", None),
         }
 
-        self._run_options = {
-            k: v
-            for k, v in kwargs.items()
-            if k in signature(self._platform.run).parameters.keys()
-        }
-        [kwargs.pop(k) for k in self._run_options.keys()]
+        self._deduplication_id = self._session_options["deduplication_id"]
+
+        self._run_options = kwargs.copy()
         self._run_options.update(
             {
                 "session_name": self._session_options.get("name"),
@@ -141,12 +138,6 @@ class ScalewayDevice(Device, ABC):
                 ),
             }
         )
-
-        if len(kwargs) > 0:
-            warnings.warn(
-                f"The following keyword arguments are not supported by '{self.name}' device: {list(kwargs.keys())}",
-                UserWarning,
-            )
 
         self._session_id = None
 
@@ -274,7 +265,7 @@ class ScalewayDevice(Device, ABC):
 
     @property
     @abstractmethod
-    def backend_types(self) -> Tuple[BaseBackend]:
+    def backend_type(self) -> BaseBackend:
         pass
 
     def stop_validating_observables(self, obs):
@@ -315,9 +306,18 @@ class ScalewayDevice(Device, ABC):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
+    def __repr__(self):
+        return (
+            f"{super().__repr__()[:-1]} with deduplication_id={self.deduplication_id}>"
+        )
+
     @property
     def session_id(self):
         return self._session_id
+
+    @property
+    def deduplication_id(self):
+        return self._deduplication_id
 
     @property
     def num_wires(self):
