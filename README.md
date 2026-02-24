@@ -14,6 +14,8 @@
 - [Aer](https://github.com/Qiskit/qiskit-aer) state vector and tensor network multi-GPU emulators
 - [AQT](https://www.aqt.eu/) trapped-ions quantum computers
 - [IQM](https://meetiqm.com/) superconducting quantum computers
+- [CUDA-Q](https://developer.nvidia.com/cuda-q) NVIDIA's quantum framework
+- [qsim](https://quantumai.google/qsim) Google's full state-vector simulator
 
 More info on the **[Quantum service web page](https://www.scaleway.com/en/quantum-as-a-service/)**.
 
@@ -32,6 +34,8 @@ The following device names are supported:
  - `scaleway.aer` - Aer emulation, offers flexibility, noiseless by default but can handle given Aer's noise models, large choice of backends.
  - `scaleway.aqt` - AQT (Alpine Quantum Technologies), noisy trapped-ions based quantum computers.
  - `scaleway.iqm` - IQM, superconducting quantum computers.
+ - `scaleway.cudaq` - NVIDIA, emulation framework.
+ - `scaleway.qsim` - Google, full state-vector simulator.
 
 ### Install the package
 We encourage installing Scaleway provider via pip:
@@ -115,7 +119,7 @@ You can find examples under the [examples folder](doc/examples/) of this reposit
 This repository is in a very early stage and is still in active development. If you are looking for a way to contribute please read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Reach us
-We love feedback. Feel free to reach us on [Scaleway Slack community](https://slack.scaleway.com/), we are waiting for you on [#opensource](https://scaleway-community.slack.com/app_redirect?channel=opensource)..
+We love feedback! Feel free to reach us on [Scaleway Slack community](https://slack.scaleway.com/), we are waiting for you on [#opensource](https://scaleway-community.slack.com/app_redirect?channel=opensource).
 
 ## License
 [License Apache 2.0](LICENSE)
