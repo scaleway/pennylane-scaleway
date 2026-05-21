@@ -26,6 +26,7 @@ devices_list = [
     "scaleway.iqm = pennylane_scaleway:IqmDevice",
     "scaleway.qsim = pennylane_scaleway:QsimDevice",
     "scaleway.cudaq = pennylane_scaleway:CudaqDevice",
+    "scaleway.alloy = pennylane_scaleway:AlloyDevice",
 ]
 
 setup(
