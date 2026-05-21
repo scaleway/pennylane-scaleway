@@ -28,6 +28,7 @@ devices_list = [
     "scaleway.cudaq = pennylane_scaleway:CudaqDevice",
     "scaleway.pioneer = pennylane_scaleway:PioneerDevice",
     "scaleway.quantanium = pennylane_scaleway:QuantaniumDevice",
+    "scaleway.alloy = pennylane_scaleway:AlloyDevice",
 ]
 
 setup(

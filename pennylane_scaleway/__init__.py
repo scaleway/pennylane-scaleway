@@ -19,4 +19,5 @@ from .iqm_device import IqmDevice
 from .qsim_device import QsimDevice
 from .pioneer_device import PioneerDevice
 from .quantanium_device import QuantaniumDevice
+from .alloy_device import AlloyDevice
 from .utils import circuit_to_qiskit
