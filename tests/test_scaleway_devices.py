@@ -29,6 +29,8 @@ if SCW_SECRET_KEY in ["fake-token", ""]:
         # ("scaleway.aer", "EMU-AER-LOCAL"),
         ("scaleway.pioneer", "EMU-PIONEER-LOCAL"),
         # ("scaleway.qsim", "EMU-QSIM-LOCAL"),
+        ("scaleway.quantanium", "EMU-QUANTANIUM-LOCAL")
+        # ("scaleway.aer", "EMU-AER-LOCAL"),
         # ("scaleway.aqt", "EMU-IBEX-12PQ-LOCAL"),
         # ("scaleway.iqm", "EMU-SIRIUS-24PQ-LOCAL")
     ]

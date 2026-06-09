@@ -17,6 +17,7 @@
 - [CUDA-Q](https://developer.nvidia.com/cuda-q) NVIDIA's quantum framework
 - [qsim](https://quantumai.google/qsim) Google's full state-vector simulator
 - [alloy](https://github.com/quobly-sw/Quobly-alloy) Quobly's density matrix simulator
+- [Quantanium](https://github.com/qperfect-io/quantanium-python) QPerfect's state-vector simulator
 
 More info on the **[Quantum service web page](https://www.scaleway.com/en/quantum-as-a-service/)**.
 
@@ -38,6 +39,7 @@ The following device names are supported:
  - `scaleway.cudaq` - NVIDIA, emulation framework.
  - `scaleway.qsim` - Google, full state-vector simulator.
  - `scaleway.alloy` - Quobly, density matrix simulator.
+ - `scaleway.quantanium` - QPerfect, state-vector simulator.
 
 ### Install the package
 We encourage installing Scaleway provider via pip:

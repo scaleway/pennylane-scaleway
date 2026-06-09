@@ -29,7 +29,6 @@ from qiskit.circuit import (
 )
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 
-
 QISKIT_OPERATION_MAP = {
     # native PennyLane operations also native to qiskit
     "PauliX": lib.XGate,

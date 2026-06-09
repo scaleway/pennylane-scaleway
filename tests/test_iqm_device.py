@@ -17,7 +17,6 @@ import pennylane as qml
 from pennylane import numpy as np
 import pytest
 
-
 SCW_PROJECT_ID = os.environ.get("SCW_PROJECT_ID")
 SCW_SECRET_KEY = os.environ.get("SCW_SECRET_KEY")
 SCW_API_URL = os.getenv("SCW_API_URL")
