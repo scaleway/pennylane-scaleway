@@ -14,20 +14,20 @@
 
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
 
-from qiskit_scaleway.backends import AlloyBackend
+from qiskit_scaleway.backends import PioneerBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
 
 
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
-class AlloyDevice(ScalewayDevice):
+class PioneerDevice(ScalewayDevice):
     """
-    Scaleway's device to run Pennylane circuits on Alloy backends.
+    Scaleway's device to run Pennylane circuits on Pioneer backends.
     """
 
-    name = "scaleway.alloy"
-    backend_type = AlloyBackend
+    name = "scaleway.pioneer"
+    backend_type = PioneerBackend
 
     # operations = set(QISKIT_OPERATION_MAP.keys())
     # observables = {
