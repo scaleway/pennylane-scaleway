@@ -14,20 +14,20 @@
 
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
 
-from qiskit_scaleway.backends import QuantaniumBackend
+from qiskit_scaleway.backends import QperfectBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
 
 
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
-class QuantaniumDevice(ScalewayDevice):
+class QperfectDevice(ScalewayDevice):
     """
     Scaleway's device to run Pennylane circuits on CUDA-Q backends.
     """
 
-    name = "scaleway.quantanium"
-    backend_type = QuantaniumBackend
+    name = "scaleway.qperfect"
+    backend_type = QperfectBackend
 
     # operations = set(QISKIT_OPERATION_MAP.keys())
     # observables = {
