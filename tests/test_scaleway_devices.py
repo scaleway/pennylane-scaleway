@@ -27,7 +27,8 @@ SCW_API_URL = os.getenv("SCW_API_URL")
 if SCW_SECRET_KEY in ["fake-token", ""]:
     TEST_CASES = [
         # ("scaleway.aer", "EMU-AER-LOCAL"),
-        ("scaleway.pioneer", "EMU-PIONEER-LOCAL"),
+        # ("scaleway.quobly", "EMU-PIONEER-LOCAL"),
+        ("scaleway.quobly", "EMU-PIONEER-64C-512M"),
         # ("scaleway.qsim", "EMU-QSIM-LOCAL"),
         # ("scaleway.aqt", "EMU-IBEX-12PQ-LOCAL"),
         # ("scaleway.iqm", "EMU-SIRIUS-24PQ-LOCAL")
@@ -42,8 +43,8 @@ else:
 SHOTS = 4096
 
 MONO_CIRCUIT_BACKEND = [
-    "scaleway.quantanium",
-    "scaleway.pioneer",
+    "scaleway.qperfect",
+    "scaleway.quobly",
     "scaleway.cudaq",
     "scaleway.qsim",
 ]
