@@ -26,12 +26,13 @@ devices_list = [
     "scaleway.iqm = pennylane_scaleway:IqmDevice",
     "scaleway.qsim = pennylane_scaleway:QsimDevice",
     "scaleway.cudaq = pennylane_scaleway:CudaqDevice",
-    "scaleway.quantanium = pennylane_scaleway:QuantaniumDevice",
+    "scaleway.qperfect = pennylane_scaleway:QperfectDevice",
+    "scaleway.quobly = pennylane_scaleway:QuoblyDevice",
 ]
 
 setup(
     name="pennylane-scaleway",
-    version="0.3.3",
+    version="0.3.4",
     project_urls={
         "Documentation": "https://www.scaleway.com/en/quantum-as-a-service/",
         "Source": "https://github.com/scaleway/pennylane-scaleway",

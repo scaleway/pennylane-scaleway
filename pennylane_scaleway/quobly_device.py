@@ -14,20 +14,20 @@
 
 from pennylane.devices.modifiers import simulator_tracking, single_tape_support
 
-from qiskit_scaleway.backends import QuantaniumBackend
+from qiskit_scaleway.backends import QuoblyBackend
 
 from pennylane_scaleway.scw_device import ScalewayDevice
 
 
 @simulator_tracking  # update device.tracker with some relevant information
 @single_tape_support  # add support for device.execute(tape) in addition to device.execute((tape,))
-class QuantaniumDevice(ScalewayDevice):
+class QuoblyDevice(ScalewayDevice):
     """
-    Scaleway's device to run Pennylane circuits on CUDA-Q backends.
+    Scaleway's device to run Pennylane circuits on Quobly backends.
     """
 
-    name = "scaleway.quantanium"
-    backend_type = QuantaniumBackend
+    name = "scaleway.quobly"
+    backend_type = QuoblyBackend
 
     # operations = set(QISKIT_OPERATION_MAP.keys())
     # observables = {
@@ -67,11 +67,11 @@ class QuantaniumDevice(ScalewayDevice):
             ```python
             import pennylane as qml
 
-            with qml.device("scaleway.cudaq",
+            with qml.device("scaleway.qsim",
                 wires=2,
                 project_id=<your-project-id>,
                 secret_key=<your-secret-key>,
-                backend="EMU-CUDAQ-8H100SXM"
+                backend="EMU-QSIM-64C-512M"
             ) as dev:
                 @qml.set_shots(512)
                 @qml.qnode(dev)

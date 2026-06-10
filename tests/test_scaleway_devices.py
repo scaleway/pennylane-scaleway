@@ -26,8 +26,10 @@ SCW_API_URL = os.getenv("SCW_API_URL")
 
 if SCW_SECRET_KEY in ["fake-token", ""]:
     TEST_CASES = [
-        ("scaleway.quantanium", "EMU-QUANTANIUM-LOCAL")
         # ("scaleway.aer", "EMU-AER-LOCAL"),
+        # ("scaleway.quobly", "EMU-PIONEER-LOCAL"),
+        ("scaleway.quobly", "EMU-PIONEER-64C-512M"),
+        # ("scaleway.qsim", "EMU-QSIM-LOCAL"),
         # ("scaleway.aqt", "EMU-IBEX-12PQ-LOCAL"),
         # ("scaleway.iqm", "EMU-SIRIUS-24PQ-LOCAL")
     ]
@@ -40,13 +42,12 @@ else:
 
 SHOTS = 4096
 
-MONO_CIRCUIT_DEVICE = [
-    "scaleway.quantanium",
-    "scaleway.qsim",
-    "scaleway.pioneer",
+MONO_CIRCUIT_BACKEND = [
+    "scaleway.qperfect",
+    "scaleway.quobly",
     "scaleway.cudaq",
+    "scaleway.qsim",
 ]
-
 
 # Fixtures
 @pytest.fixture(scope="module")
@@ -150,8 +151,8 @@ def test_tracker(device_name, backend_name, device_kwargs):
             )
 
         with dev.tracker:
-            # Checks multiple executions at once, as well as persistent tracking between contexts
-            if dev.name not in MONO_CIRCUIT_DEVICE:
+            if device_name not in MONO_CIRCUIT_BACKEND:
+                # Checks multiple executions at once, as well as persistent tracking between contexts
                 circuit([0.0, 0.5, 1.0])
                 assert len(dev.tracker.history["executions"]) == 4
                 assert dev.tracker.totals["executions"] == 4

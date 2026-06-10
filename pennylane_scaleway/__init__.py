@@ -17,5 +17,6 @@ from .aqt_device import AqtDevice
 from .cudaq_device import CudaqDevice
 from .iqm_device import IqmDevice
 from .qsim_device import QsimDevice
-from .quantanium_device import QuantaniumDevice
+from .qperfect_device import QperfectDevice
+from .quobly_device import QuoblyDevice
 from .utils import circuit_to_qiskit
